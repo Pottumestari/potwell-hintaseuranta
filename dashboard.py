@@ -414,12 +414,13 @@ st.write("---")
 # OSA 2: HINTAMATRIISI
 # ==========================================
 
-st.subheader("📊 Hintamatriisi (Kaikki tuotteet)")
-st.caption("Tämä taulukko näyttää uusimman hinnan kaikista tietokannan tuotteista verrattuna edelliseen mittaukseen.")
+st.subheader("📊 Hintamatriisi")
+st.caption("Taulukko on ryhmitelty kauppaketjun mukaan: K-Citymarket ➝ K-Supermarket ➝ K-Market.")
 
 if df.empty:
     st.write("Ei dataa matriisille.")
 else:
+    # --- 1. DATAN VALMISTELU ---
     sorted_dates = sorted(df['pvm'].unique(), reverse=True)
     latest_date = sorted_dates[0]
     previous_date = sorted_dates[1] if len(sorted_dates) > 1 else None
@@ -435,6 +436,7 @@ else:
         merged_df = latest_df
         merged_df['price_prev'] = np.nan
 
+    # --- 2. HINTASOLUJEN MUOTOILU ---
     def format_price_cell(row):
         price = row['price_now']
         prev = row['price_prev']
@@ -442,7 +444,6 @@ else:
         
         price_str = f"{price:.2f} €"
         
-        # Nuolet (▲/▼)
         arrow = ""
         if pd.notna(prev):
             if price > prev: arrow = " ▲"
@@ -453,31 +454,45 @@ else:
 
     merged_df['formatted_cell'] = merged_df.apply(format_price_cell, axis=1)
 
-    # 1. Luodaan matriisi (Pivot)
+    # --- 3. KAUPPOJEN RYHMITTELY (KETJUT) ---
+    def detect_chain(store_name):
+        # Logiikka: Jos nimessä on SM -> Supermarket, KM -> Market, muuten oletetaan Citymarket
+        if "KM " in store_name: return "3. K-Market"
+        if "SM " in store_name: return "2. K-Supermarket"
+        # Oletus: Isot kaupat (esim. "Espoo (Iso Omena)") ovat Citymarketeja
+        return "1. K-Citymarket"
+
+    merged_df['Ketju'] = merged_df['kauppa'].apply(detect_chain)
+
+    # --- 4. MATRIISIN LUONTI (MULTI-INDEX) ---
+    # Luodaan matriisi, jossa sarakkeilla on kaksi tasoa: [Ketju, Kauppa]
     matrix_df = merged_df.pivot_table(
         index='tuote',
-        columns='kauppa',
+        columns=['Ketju', 'kauppa'],
         values='formatted_cell',
         aggfunc='first'
     )
 
-    # 2. Haetaan EAN-koodit erikseen ja liitetään ne matriisiin
+    # --- 5. EAN-SARAKKEEN LISÄYS ---
     if 'ean' in df.columns:
+        # Haetaan EANit
         ean_map = df[['tuote', 'ean']].drop_duplicates(subset=['tuote'], keep='last').set_index('tuote')
         
-        # Yhdistetään EAN matriisiin
-        matrix_df = matrix_df.join(ean_map)
+        # Jotta EAN sopii MultiIndex-taulukkoon, sille pitää antaa myös "yläotsikko"
+        # Käytetään yläotsikkona " Tuotetiedot" (välilyönti alussa varmistaa että se on eka)
+        ean_header = pd.MultiIndex.from_tuples([(" Tuotetiedot", "EAN")]) 
+        ean_df = pd.DataFrame(ean_map['ean'], index=matrix_df.index)
+        ean_df.columns = ean_header
         
-        # 3. Järjestetään sarakkeet: EAN ensin, sitten kaupat aakkosjärjestyksessä
-        store_cols = sorted([c for c in matrix_df.columns if c != 'ean'])
+        # Yhdistetään EAN + Matriisi
+        final_df = pd.concat([ean_df, matrix_df], axis=1)
         
-        # Asetetaan uusi järjestys: [ean, kauppa1, kauppa2...]
-        matrix_df = matrix_df[['ean'] + store_cols]
-        
-        # Siistitään EAN-sarakkeen puuttuvat arvot tyhjiksi
-        matrix_df['ean'] = matrix_df['ean'].fillna('')
+        # Siistitään NaN-arvot tyhjiksi stringeiksi EAN-sarakkeessa
+        final_df[(" Tuotetiedot", "EAN")] = final_df[(" Tuotetiedot", "EAN")].fillna('')
+    else:
+        final_df = matrix_df
 
-    # VÄRITYSLOGIIKKA
+    # --- 6. VÄRITYSLOGIIKKA JA NÄYTTÖ ---
     def color_arrows(val):
         if isinstance(val, str):
             if "▲" in val:
@@ -486,13 +501,12 @@ else:
                 return "color: #dc3545; font-weight: bold;"  # Punainen
         return ""
 
-    # KÄYTETÄÄN STYLE.MAP VÄRITYKSEEN
+    # Näytetään taulukko
     st.dataframe(
-        matrix_df.style.map(color_arrows), 
+        final_df.style.map(color_arrows), 
         use_container_width=True, 
-        height=700
+        height=800
     )
 
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
-
