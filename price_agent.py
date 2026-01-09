@@ -102,7 +102,6 @@ def save_to_sheet(data_list):
             try: price_float = float(raw_price)
             except: price_float = 0.0
             new_rows.append([item['Pvm'], item['Kaupunki/Kauppa'], item['Tuote'], item['Hakusana'], price_float])
-            print(f"     -> {item['Tuote'][:50]}... ({price_float} €)")
 
     if new_rows:
         sheet.append_rows(new_rows)
@@ -110,347 +109,474 @@ def save_to_sheet(data_list):
     else:
         print("ℹ️ Ei uusia tietoja tallennettavaksi.")
 
-def fetch_store_data_simple(store_name, store_slug, product_list):
-    """Simple, reliable scraping approach"""
-    print(f"\n🏪 {store_name}...")
-    store_results = []
+def get_proxy():
+    """Get proxy from environment or use free proxy list"""
+    # Try environment variable first
+    proxy_url = os.environ.get("PROXY_URL")
+    if proxy_url:
+        return {"server": proxy_url}
+    
+    # Free proxy list (public proxies - may be unreliable)
+    free_proxies = [
+        # Add some free proxies here if needed
+    ]
+    
+    if free_proxies:
+        return {"server": random.choice(free_proxies)}
+    
+    return None
+
+def create_stealth_browser(playwright, use_proxy=False):
+    """Create a stealth browser with anti-detection"""
+    
+    launch_args = {
+        "headless": True,
+        "args": [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--window-size=1920,1080",
+            "--start-maximized",
+            "--disable-web-security",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--disable-site-isolation-trials",
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+            "--disable-background-networking",
+            "--disable-component-update",
+            "--disable-domain-reliability",
+            "--disable-client-side-phishing-detection",
+            "--disable-default-apps",
+            "--disable-sync",
+            "--disable-translate",
+            "--metrics-recording-only",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--no-zygote",
+            "--disable-accelerated-2d-canvas",
+            "--disable-accelerated-jpeg-decoding",
+            "--disable-accelerated-mjpeg-decode",
+            "--disable-app-list-dismiss-on-blur",
+            "--disable-accelerated-video-decode",
+            "--allow-running-insecure-content",
+            "--autoplay-policy=user-gesture-required",
+            "--disable-component-extensions-with-background-pages",
+            "--disable-features=AudioServiceOutOfProcess,TranslateUI,BlinkGenPropertyTrees",
+            "--disable-ipc-flooding-protection",
+            "--disable-notifications",
+            "--disable-offer-store-unmasked-wallet-cards",
+            "--disable-popup-blocking",
+            "--disable-prompt-on-repost",
+            "--disable-speech-api",
+            "--disable-print-preview",
+            "--disable-hang-monitor",
+            "--disable-extensions",
+            "--mute-audio",
+            "--disable-breakpad",
+            "--disable-crash-reporter",
+            "--disable-logging",
+            "--disable-device-discovery-notifications",
+            "--disable-background-networking",
+        ]
+    }
+    
+    if use_proxy:
+        proxy = get_proxy()
+        if proxy:
+            launch_args["proxy"] = proxy
+            print(f"🔒 Using proxy: {proxy['server']}")
+    
+    browser = playwright.chromium.launch(**launch_args)
+    
+    # Create context with stealth
+    context = browser.new_context(
+        viewport={'width': 1920, 'height': 1080},
+        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        locale='fi-FI',
+        timezone_id='Europe/Helsinki',
+        geolocation={'latitude': 60.1699, 'longitude': 24.9384},  # Helsinki
+        permissions=['geolocation'],
+        color_scheme='light',
+        java_script_enabled=True,
+        has_touch=False,
+        is_mobile=False,
+        device_scale_factor=1,
+        screen={'width': 1920, 'height': 1080},
+    )
+    
+    # Add stealth scripts
+    context.add_init_script("""
+        // Overwrite navigator properties
+        const originalQuery = window.navigator.permissions.query;
+        window.navigator.permissions.query = (parameters) => (
+            parameters.name === 'notifications' ?
+                Promise.resolve({ state: Notification.permission }) :
+                originalQuery(parameters)
+        );
+
+        // Mock plugins
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => [1, 2, 3, 4, 5],
+        });
+
+        // Mock languages
+        Object.defineProperty(navigator, 'languages', {
+            get: () => ['fi-FI', 'fi', 'en-US', 'en'],
+        });
+
+        // Mock webdriver
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => false,
+        });
+
+        // Mock chrome
+        window.chrome = {
+            runtime: {},
+            loadTimes: function() {},
+            csi: function() {},
+            app: {}
+        };
+
+        // Mock permissions
+        const originalPermissions = navigator.permissions;
+        Object.defineProperty(navigator, 'permissions', {
+            value: {
+                ...originalPermissions,
+                query: (parameters) => {
+                    if (parameters.name === 'notifications') {
+                        return Promise.resolve({ state: 'denied' });
+                    }
+                    return originalPermissions.query(parameters);
+                }
+            }
+        });
+
+        // Hide automation
+        Object.defineProperty(document, 'hidden', { value: false });
+        Object.defineProperty(document, 'visibilityState', { value: 'visible' });
+    """)
+    
+    return browser, context
+
+def fetch_with_stealth(store_name, store_slug, ean_list):
+    """Fetch prices with maximum stealth"""
+    print(f"\n🏪 {store_name} - Advanced Stealth Mode")
+    print(f"  {'─' * 50}")
+    
+    results = []
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     with sync_playwright() as p:
-        # Launch browser
-        browser = p.chromium.launch(
-            headless=True,
-            args=[
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-            ]
-        )
-        
-        # Create context
-        context = browser.new_context(
-            viewport={'width': 1920, 'height': 1080},
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        )
-        
-        page = context.new_page()
-        page.set_default_timeout(30000)
-        
         try:
-            # First, let's see what the site looks like
+            # Try with proxy first
+            browser, context = create_stealth_browser(p, use_proxy=True)
+            page = context.new_page()
+            
+            # Set longer timeouts
+            page.set_default_timeout(60000)
+            page.set_default_navigation_timeout(60000)
+            
+            # Navigate to store with human-like behavior
             store_url = f"https://www.k-ruoka.fi/kauppa/{store_slug}"
-            print(f"  📍 Menossa: {store_url}")
+            print(f"  📍 Navigating to: {store_url}")
             
-            # Try to load the store page
-            response = page.goto(store_url, wait_until="domcontentloaded", timeout=30000)
-            print(f"  📄 Status: {response.status if response else 'N/A'}")
+            # Add random mouse movements before navigation
+            page.mouse.move(random.randint(100, 500), random.randint(100, 500))
             
-            # Wait a bit
-            time.sleep(3)
+            # Navigate with referrer
+            page.goto(store_url, wait_until="networkidle", timeout=60000)
             
-            # Take a screenshot for debugging
-            screenshot_path = f"debug_{store_slug}.png"
-            page.screenshot(path=screenshot_path)
-            print(f"  📸 Screenshot saved: {screenshot_path}")
+            # Check for blocking
+            page_content = page.content()
+            if "403" in page_content or "Forbidden" in page_content or "Cloudflare" in page_content:
+                print(f"  ⚠️ Blocked! Trying without proxy...")
+                browser.close()
+                
+                # Try without proxy
+                browser, context = create_stealth_browser(p, use_proxy=False)
+                page = context.new_page()
+                page.set_default_timeout(60000)
+                page.goto(store_url, wait_until="networkidle", timeout=60000)
             
-            # Get page content for analysis
-            html = page.content()
-            with open(f"debug_{store_slug}.html", "w", encoding="utf-8") as f:
-                f.write(html[:5000])  # Save first 5000 chars
+            # Wait and simulate human behavior
+            time.sleep(random.uniform(3, 5))
             
-            # Look for search box
-            print(f"  🔍 Etsitään hakukenttää...")
+            # Scroll randomly
+            page.evaluate(f"window.scrollBy(0, {random.randint(100, 500)})")
+            time.sleep(random.uniform(1, 2))
+            
+            # Check page title
+            title = page.title()
+            print(f"  📄 Page title: {title}")
+            
+            if "404" in title or "Not Found" in title:
+                print(f"  ❌ Store not found")
+                browser.close()
+                return results
+            
+            # Try to find search functionality
+            print(f"  🔍 Looking for search functionality...")
+            
+            # Method 1: Try search box
+            search_found = False
             search_selectors = [
                 'input[type="search"]',
                 'input[placeholder*="etsi"]',
                 'input[placeholder*="hae"]',
                 '[data-testid*="search"]',
                 '#search',
-                '.search-input'
+                '.search-input',
+                'input[name="q"]'
             ]
             
-            search_box = None
             for selector in search_selectors:
                 try:
-                    element = page.locator(selector).first
-                    if element.count() > 0 and element.is_visible():
-                        search_box = element
-                        print(f"  ✅ Löytyi hakukenttä: {selector}")
+                    search_box = page.locator(selector).first
+                    if search_box.count() > 0:
+                        print(f"  ✅ Found search box: {selector}")
+                        search_found = True
+                        
+                        # Process each EAN
+                        for i, ean in enumerate(ean_list, 1):
+                            print(f"    [{i}/{len(ean_list)}] {ean}...", end=" ")
+                            
+                            try:
+                                # Clear and type slowly like a human
+                                search_box.fill("")
+                                for char in ean:
+                                    search_box.type(char, delay=random.uniform(50, 150))
+                                    time.sleep(random.uniform(0.05, 0.1))
+                                
+                                # Press Enter
+                                search_box.press("Enter")
+                                
+                                # Wait for results
+                                time.sleep(random.uniform(2, 4))
+                                
+                                # Look for products
+                                product = extract_product_info(page, ean)
+                                
+                                if product:
+                                    results.append({
+                                        "Pvm": current_date,
+                                        "Kaupunki/Kauppa": store_name,
+                                        "Hakusana": ean,
+                                        "Tuote": product['name'][:100],
+                                        "Hinta (EUR)": product['price']
+                                    })
+                                    print(f"✅ {product['price']}€")
+                                else:
+                                    print("❌")
+                                
+                                # Clear search
+                                search_box.fill("")
+                                time.sleep(random.uniform(1, 2))
+                                
+                            except Exception as e:
+                                print(f"⚠️ Error: {str(e)[:30]}")
+                                continue
+                        
                         break
+                        
                 except:
                     continue
             
-            if not search_box:
-                print(f"  ❌ Hakukenttää ei löytynyt")
-                # Try direct search URL instead
-                print(f"  🔄 Kokeillaan suoraa hakua...")
+            if not search_found:
+                print(f"  ⚠️ No search box found, trying direct URLs...")
                 
-                for i, ean in enumerate(product_list, 1):
-                    print(f"    [{i}/{len(product_list)}] {ean}...", end=" ")
+                # Method 2: Direct search URLs
+                for i, ean in enumerate(ean_list, 1):
+                    print(f"    [{i}/{len(ean_list)}] {ean}...", end=" ")
                     
                     try:
-                        # Try direct search URL
                         search_url = f"https://www.k-ruoka.fi/kauppa/{store_slug}/haku?q={ean}"
-                        page.goto(search_url, wait_until="domcontentloaded", timeout=15000)
-                        time.sleep(2)
                         
-                        # Look for products on the page
-                        product_selectors = [
-                            '.product',
-                            '[class*="product"]',
-                            '.search-result',
-                            '.item',
-                            'article',
-                            '.card'
-                        ]
+                        # Navigate with human-like delay
+                        time.sleep(random.uniform(1, 2))
+                        page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+                        time.sleep(random.uniform(2, 3))
                         
-                        found_product = False
-                        for selector in product_selectors:
-                            try:
-                                products = page.locator(selector)
-                                count = products.count()
-                                if count > 0:
-                                    # Check first product
-                                    for j in range(min(count, 3)):
-                                        try:
-                                            product = products.nth(j)
-                                            product_text = product.inner_text(timeout=2000)
-                                            
-                                            # Simple parsing
-                                            lines = [l.strip() for l in product_text.split('\n') if l.strip()]
-                                            if not lines:
-                                                continue
-                                            
-                                            # Get name (longest line is usually the product name)
-                                            name = max(lines, key=len)
-                                            clean_name = clean_text(name)
-                                            
-                                            # Skip excluded
-                                            if any(bad in clean_name.lower() for bad in EXCLUDE_KEYWORDS):
-                                                continue
-                                            
-                                            # Find price
-                                            price = None
-                                            for line in lines:
-                                                price_match = re.search(r'(\d+[\.,]\d+)\s*€?', line)
-                                                if price_match:
-                                                    try:
-                                                        price_str = price_match.group(1).replace(',', '.')
-                                                        price = float(price_str)
-                                                        break
-                                                    except:
-                                                        continue
-                                            
-                                            if price:
-                                                store_results.append({
-                                                    "Pvm": current_date,
-                                                    "Kaupunki/Kauppa": store_name,
-                                                    "Hakusana": ean,
-                                                    "Tuote": clean_name[:100],
-                                                    "Hinta (EUR)": price
-                                                })
-                                                print(f"✅ {price}€")
-                                                found_product = True
-                                                break
-                                                
-                                        except:
-                                            continue
-                                    
-                                    if found_product:
-                                        break
-                                        
-                            except:
-                                continue
+                        # Extract product info
+                        product = extract_product_info(page, ean)
                         
-                        if not found_product:
+                        if product:
+                            results.append({
+                                "Pvm": current_date,
+                                "Kaupunki/Kauppa": store_name,
+                                "Hakusana": ean,
+                                "Tuote": product['name'][:100],
+                                "Hinta (EUR)": product['price']
+                            })
+                            print(f"✅ {product['price']}€")
+                        else:
                             print("❌")
-                        
-                        # Delay between searches
-                        if i < len(product_list):
-                            time.sleep(random.uniform(1, 2))
                             
                     except Exception as e:
                         print(f"⚠️ {str(e)[:30]}")
                         continue
-                
-                browser.close()
-                return store_results
-            
-            # If we found search box, use it
-            print(f"  ⌨️  Käytetään hakukenttää...")
-            
-            for i, ean in enumerate(product_list, 1):
-                print(f"    [{i}/{len(product_list)}] {ean}...", end=" ")
-                
-                try:
-                    # Clear and fill search
-                    search_box.fill("")
-                    search_box.fill(ean)
-                    search_box.press("Enter")
-                    
-                    # Wait for results
-                    time.sleep(2)
-                    
-                    # Look for products
-                    found_product = False
-                    
-                    # Try different product selectors
-                    product_selectors = [
-                        '.product-card',
-                        '[data-testid="product-card"]',
-                        '.search-result-item',
-                        'article',
-                        '.product-item'
-                    ]
-                    
-                    for selector in product_selectors:
-                        try:
-                            products = page.locator(selector)
-                            count = products.count()
-                            if count > 0:
-                                # Get first product
-                                product = products.first
-                                product_text = product.inner_text(timeout=2000)
-                                
-                                # Parse product info
-                                lines = [l.strip() for l in product_text.split('\n') if l.strip()]
-                                if not lines:
-                                    continue
-                                
-                                # Find product name
-                                name = lines[0]
-                                if len(name) < 3 and len(lines) > 1:
-                                    name = lines[1]
-                                
-                                clean_name = clean_text(name)
-                                
-                                # Skip excluded
-                                if any(bad in clean_name.lower() for bad in EXCLUDE_KEYWORDS):
-                                    continue
-                                
-                                # Find price
-                                price = None
-                                for line in lines:
-                                    price_match = re.search(r'(\d+[\.,]\d+)\s*€?', line)
-                                    if price_match:
-                                        try:
-                                            price_str = price_match.group(1).replace(',', '.')
-                                            price = float(price_str)
-                                            break
-                                        except:
-                                            continue
-                                
-                                if price:
-                                    store_results.append({
-                                        "Pvm": current_date,
-                                        "Kaupunki/Kauppa": store_name,
-                                        "Hakusana": ean,
-                                        "Tuote": clean_name[:100],
-                                        "Hinta (EUR)": price
-                                    })
-                                    print(f"✅ {price}€")
-                                    found_product = True
-                                    break
-                                    
-                        except:
-                            continue
-                    
-                    if not found_product:
-                        print("❌")
-                    
-                    # Clear search for next product
-                    search_box.fill("")
-                    time.sleep(random.uniform(1, 2))
-                    
-                except Exception as e:
-                    print(f"⚠️ {str(e)[:30]}")
-                    continue
             
             browser.close()
-            return store_results
+            
+            print(f"  {'─' * 50}")
+            print(f"  📊 Found {len(results)}/{len(ean_list)} products")
+            
+            return results
             
         except Exception as e:
-            print(f"  ❌ Virhe: {str(e)}")
-            browser.close()
-            return store_results
+            print(f"  ❌ Fatal error: {str(e)}")
+            return results
+
+def extract_product_info(page, ean):
+    """Extract product information from page"""
+    try:
+        # Try multiple selectors for products
+        product_selectors = [
+            '[data-testid="product-card"]',
+            '.product-card',
+            '.product-item',
+            '.search-result-item',
+            'article',
+            '.product',
+            '[class*="productCard"]',
+            '.card'
+        ]
+        
+        for selector in product_selectors:
+            try:
+                products = page.locator(selector)
+                count = products.count()
+                
+                if count > 0:
+                    # Check first 3 products
+                    for i in range(min(count, 3)):
+                        try:
+                            product = products.nth(i)
+                            
+                            # Get all text
+                            text = product.inner_text(timeout=3000)
+                            lines = [line.strip() for line in text.split('\n') if line.strip()]
+                            
+                            if not lines:
+                                continue
+                            
+                            # Find product name (usually the longest text)
+                            name = max(lines, key=len)
+                            clean_name = clean_text(name)
+                            
+                            # Skip excluded
+                            if any(bad in clean_name.lower() for bad in EXCLUDE_KEYWORDS):
+                                continue
+                            
+                            # Find price
+                            price = None
+                            for line in lines:
+                                # Look for price patterns
+                                price_match = re.search(r'(\d+[\.,]\d+)\s*€?', line)
+                                if price_match:
+                                    try:
+                                        price_str = price_match.group(1).replace(',', '.')
+                                        price = float(price_str)
+                                        
+                                        # Additional validation: price should be reasonable
+                                        if 0.1 <= price <= 100:  # Assuming reasonable price range
+                                            return {
+                                                'name': clean_name,
+                                                'price': price
+                                            }
+                                    except:
+                                        continue
+                            
+                        except:
+                            continue
+                            
+            except:
+                continue
+        
+        return None
+        
+    except Exception as e:
+        return None
 
 def main():
-    print("🤖 Potwell Matrix-Robotti (Simple Scraper)")
-    print(f"⏰ Aloitusaika: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("🤖 Potwell Matrix-Robotti (Ultimate Stealth Mode)")
+    print(f"⏰ Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'=' * 60}")
     
-    bot_id = int(os.environ.get("BOT_ID", 1))
-    total_bots = int(os.environ.get("TOTAL_BOTS", 1))
-    
-    # For testing, just do one store
-    TEST_MODE = True  # Set to False for production
+    # Test mode - only one store
+    TEST_MODE = True
+    TEST_STORE = "Espoo (Iso Omena)"
+    TEST_SLUG = "k-citymarket-espoo-iso-omena"
+    TEST_PRODUCTS = SEARCH_QUERIES[:5]  # Test with 5 products
     
     if TEST_MODE:
-        print("🔧 TESTI-TILA - Käydään vain yksi kauppa läpi")
-        my_stores = {"Espoo (Iso Omena)": "k-citymarket-espoo-iso-omena"}
-        product_list = SEARCH_QUERIES[:3]  # Test with 3 products
+        print("🔧 TEST MODE - Testing one store only")
+        my_stores = {TEST_STORE: TEST_SLUG}
+        products_to_check = TEST_PRODUCTS
     else:
+        bot_id = int(os.environ.get("BOT_ID", 1))
+        total_bots = int(os.environ.get("TOTAL_BOTS", 1))
+        
         all_stores = list(STORES_TO_CHECK.items())
         chunk_size = math.ceil(len(all_stores) / total_bots)
         start_index = (bot_id - 1) * chunk_size
         end_index = start_index + chunk_size
         my_stores = dict(all_stores[start_index:end_index])
-        product_list = SEARCH_QUERIES
+        products_to_check = SEARCH_QUERIES
     
-    print(f"👷 Robotti {bot_id}/{total_bots}")
-    print(f"📋 Kaupat: {', '.join(my_stores.keys())}")
-    print(f"📦 Tuotteita: {len(product_list)}")
+    print(f"📋 Stores to process: {len(my_stores)}")
+    print(f"📦 Products per store: {len(products_to_check)}")
     print(f"{'=' * 60}")
     
     all_data = []
     
-    for i, (store_name, store_slug) in enumerate(my_stores.items(), 1):
+    for store_name, store_slug in my_stores.items():
         print(f"\n{'=' * 60}")
-        print(f"[{i}/{len(my_stores)}] KÄSITTELLÄÄN: {store_name}")
+        print(f"🛒 PROCESSING: {store_name}")
         print(f"{'=' * 60}")
         
         start_time = time.time()
         
         try:
-            store_data = fetch_store_data_simple(store_name, store_slug, product_list)
+            store_data = fetch_with_stealth(store_name, store_slug, products_to_check)
             
             if store_data:
                 all_data.extend(store_data)
-                print(f"  ✅ Löytyi {len(store_data)} tuotetta")
+                print(f"✅ Found {len(store_data)} products")
                 
-                # Save after each store
+                # Save immediately
                 save_to_sheet(store_data)
             else:
-                print(f"  ⚠️ Ei tuotteita löytynyt")
+                print(f"⚠️ No products found")
             
             elapsed = time.time() - start_time
-            print(f"  ⏱️  Aikaa kului: {elapsed:.1f}s")
+            print(f"⏱️ Time taken: {elapsed:.1f}s")
             
         except Exception as e:
-            print(f"  ❌ Poikkeus: {str(e)}")
+            print(f"❌ Store failed: {str(e)}")
         
-        # Delay between stores
-        if i < len(my_stores):
-            delay = random.uniform(5, 10)
-            print(f"  ⏳ Odotetaan {delay:.1f}s...")
+        # Long delay between stores
+        if len(my_stores) > 1:
+            delay = random.uniform(10, 20)
+            print(f"⏳ Waiting {delay:.1f}s before next store...")
             time.sleep(delay)
     
-    # Summary
+    # Final summary
     print(f"\n{'=' * 60}")
-    print("📊 YHTEENVETO:")
+    print("📊 FINAL SUMMARY")
     print(f"{'=' * 60}")
-    print(f"✅ Kaikki kaupat käsitelty: {len(my_stores)}")
-    print(f"✅ Tuotteita yhteensä: {len(all_data)}")
-    print(f"📈 Onnistumisprosentti: {(len(all_data) / (len(my_stores) * len(product_list)) * 100):.1f}%")
+    print(f"✅ Total stores processed: {len(my_stores)}")
+    print(f"✅ Total products found: {len(all_data)}")
     
     if all_data:
-        print(f"\n💾 Tallennetaan loput tiedot...")
+        print(f"\n💾 Saving final data...")
         save_to_sheet(all_data)
     
     print(f"\n{'=' * 60}")
-    print(f"🏁 Robotti {bot_id} valmis!")
-    print(f"⏰ Päättymisaika: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"🏁 Script completed!")
+    print(f"⏰ End time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'=' * 60}")
 
 if __name__ == "__main__":
