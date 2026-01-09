@@ -4,10 +4,12 @@ import os
 import json
 import math
 import random
+import requests
 from datetime import datetime
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from typing import Optional, Dict, List
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from bs4 import BeautifulSoup
 
 # --- ASETUKSET ---
 SHEET_NAME = 'Potwell Data'
@@ -109,412 +111,340 @@ def save_to_sheet(data_list):
     else:
         print("ℹ️ Ei uusia tietoja tallennettavaksi.")
 
-def get_proxy():
-    """Get proxy from environment or use free proxy list"""
-    # Try environment variable first
-    proxy_url = os.environ.get("PROXY_URL")
-    if proxy_url:
-        return {"server": proxy_url}
-    
-    # Free proxy list (public proxies - may be unreliable)
-    free_proxies = [
-        # Add some free proxies here if needed
-    ]
-    
-    if free_proxies:
-        return {"server": random.choice(free_proxies)}
-    
-    return None
-
-def create_stealth_browser(playwright, use_proxy=False):
-    """Create a stealth browser with anti-detection"""
-    
-    launch_args = {
-        "headless": True,
-        "args": [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-blink-features=AutomationControlled",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--window-size=1920,1080",
-            "--start-maximized",
-            "--disable-web-security",
-            "--disable-features=IsolateOrigins,site-per-process",
-            "--disable-site-isolation-trials",
-            "--disable-background-timer-throttling",
-            "--disable-backgrounding-occluded-windows",
-            "--disable-renderer-backgrounding",
-            "--disable-background-networking",
-            "--disable-component-update",
-            "--disable-domain-reliability",
-            "--disable-client-side-phishing-detection",
-            "--disable-default-apps",
-            "--disable-sync",
-            "--disable-translate",
-            "--metrics-recording-only",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--no-zygote",
-            "--disable-accelerated-2d-canvas",
-            "--disable-accelerated-jpeg-decoding",
-            "--disable-accelerated-mjpeg-decode",
-            "--disable-app-list-dismiss-on-blur",
-            "--disable-accelerated-video-decode",
-            "--allow-running-insecure-content",
-            "--autoplay-policy=user-gesture-required",
-            "--disable-component-extensions-with-background-pages",
-            "--disable-features=AudioServiceOutOfProcess,TranslateUI,BlinkGenPropertyTrees",
-            "--disable-ipc-flooding-protection",
-            "--disable-notifications",
-            "--disable-offer-store-unmasked-wallet-cards",
-            "--disable-popup-blocking",
-            "--disable-prompt-on-repost",
-            "--disable-speech-api",
-            "--disable-print-preview",
-            "--disable-hang-monitor",
-            "--disable-extensions",
-            "--mute-audio",
-            "--disable-breakpad",
-            "--disable-crash-reporter",
-            "--disable-logging",
-            "--disable-device-discovery-notifications",
-            "--disable-background-networking",
-        ]
-    }
-    
-    if use_proxy:
-        proxy = get_proxy()
-        if proxy:
-            launch_args["proxy"] = proxy
-            print(f"🔒 Using proxy: {proxy['server']}")
-    
-    browser = playwright.chromium.launch(**launch_args)
-    
-    # Create context with stealth
-    context = browser.new_context(
-        viewport={'width': 1920, 'height': 1080},
-        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        locale='fi-FI',
-        timezone_id='Europe/Helsinki',
-        geolocation={'latitude': 60.1699, 'longitude': 24.9384},  # Helsinki
-        permissions=['geolocation'],
-        color_scheme='light',
-        java_script_enabled=True,
-        has_touch=False,
-        is_mobile=False,
-        device_scale_factor=1,
-        screen={'width': 1920, 'height': 1080},
-    )
-    
-    # Add stealth scripts
-    context.add_init_script("""
-        // Overwrite navigator properties
-        const originalQuery = window.navigator.permissions.query;
-        window.navigator.permissions.query = (parameters) => (
-            parameters.name === 'notifications' ?
-                Promise.resolve({ state: Notification.permission }) :
-                originalQuery(parameters)
-        );
-
-        // Mock plugins
-        Object.defineProperty(navigator, 'plugins', {
-            get: () => [1, 2, 3, 4, 5],
-        });
-
-        // Mock languages
-        Object.defineProperty(navigator, 'languages', {
-            get: () => ['fi-FI', 'fi', 'en-US', 'en'],
-        });
-
-        // Mock webdriver
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => false,
-        });
-
-        // Mock chrome
-        window.chrome = {
-            runtime: {},
-            loadTimes: function() {},
-            csi: function() {},
-            app: {}
-        };
-
-        // Mock permissions
-        const originalPermissions = navigator.permissions;
-        Object.defineProperty(navigator, 'permissions', {
-            value: {
-                ...originalPermissions,
-                query: (parameters) => {
-                    if (parameters.name === 'notifications') {
-                        return Promise.resolve({ state: 'denied' });
-                    }
-                    return originalPermissions.query(parameters);
-                }
-            }
-        });
-
-        // Hide automation
-        Object.defineProperty(document, 'hidden', { value: false });
-        Object.defineProperty(document, 'visibilityState', { value: 'visible' });
-    """)
-    
-    return browser, context
-
-def fetch_with_stealth(store_name, store_slug, ean_list):
-    """Fetch prices with maximum stealth"""
-    print(f"\n🏪 {store_name} - Advanced Stealth Mode")
-    print(f"  {'─' * 50}")
-    
-    results = []
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    
-    with sync_playwright() as p:
-        try:
-            # Try with proxy first
-            browser, context = create_stealth_browser(p, use_proxy=True)
-            page = context.new_page()
-            
-            # Set longer timeouts
-            page.set_default_timeout(60000)
-            page.set_default_navigation_timeout(60000)
-            
-            # Navigate to store with human-like behavior
-            store_url = f"https://www.k-ruoka.fi/kauppa/{store_slug}"
-            print(f"  📍 Navigating to: {store_url}")
-            
-            # Add random mouse movements before navigation
-            page.mouse.move(random.randint(100, 500), random.randint(100, 500))
-            
-            # Navigate with referrer
-            page.goto(store_url, wait_until="networkidle", timeout=60000)
-            
-            # Check for blocking
-            page_content = page.content()
-            if "403" in page_content or "Forbidden" in page_content or "Cloudflare" in page_content:
-                print(f"  ⚠️ Blocked! Trying without proxy...")
-                browser.close()
+class KRuokaScraper:
+    def __init__(self):
+        self.session = requests.Session()
+        self.setup_headers()
+        self.base_url = "https://www.k-ruoka.fi"
+        
+    def setup_headers(self):
+        """Set up realistic browser headers"""
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'fi-FI,fi;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
+        })
+        
+    def get_with_retry(self, url, max_retries=3, delay=2):
+        """Get URL with retry logic"""
+        for attempt in range(max_retries):
+            try:
+                response = self.session.get(url, timeout=30, allow_redirects=True)
                 
-                # Try without proxy
-                browser, context = create_stealth_browser(p, use_proxy=False)
-                page = context.new_page()
-                page.set_default_timeout(60000)
-                page.goto(store_url, wait_until="networkidle", timeout=60000)
-            
-            # Wait and simulate human behavior
-            time.sleep(random.uniform(3, 5))
-            
-            # Scroll randomly
-            page.evaluate(f"window.scrollBy(0, {random.randint(100, 500)})")
-            time.sleep(random.uniform(1, 2))
-            
-            # Check page title
-            title = page.title()
-            print(f"  📄 Page title: {title}")
-            
-            if "404" in title or "Not Found" in title:
-                print(f"  ❌ Store not found")
-                browser.close()
-                return results
-            
-            # Try to find search functionality
-            print(f"  🔍 Looking for search functionality...")
-            
-            # Method 1: Try search box
-            search_found = False
-            search_selectors = [
-                'input[type="search"]',
-                'input[placeholder*="etsi"]',
-                'input[placeholder*="hae"]',
-                '[data-testid*="search"]',
-                '#search',
-                '.search-input',
-                'input[name="q"]'
-            ]
-            
-            for selector in search_selectors:
-                try:
-                    search_box = page.locator(selector).first
-                    if search_box.count() > 0:
-                        print(f"  ✅ Found search box: {selector}")
-                        search_found = True
-                        
-                        # Process each EAN
-                        for i, ean in enumerate(ean_list, 1):
-                            print(f"    [{i}/{len(ean_list)}] {ean}...", end=" ")
-                            
-                            try:
-                                # Clear and type slowly like a human
-                                search_box.fill("")
-                                for char in ean:
-                                    search_box.type(char, delay=random.uniform(50, 150))
-                                    time.sleep(random.uniform(0.05, 0.1))
-                                
-                                # Press Enter
-                                search_box.press("Enter")
-                                
-                                # Wait for results
-                                time.sleep(random.uniform(2, 4))
-                                
-                                # Look for products
-                                product = extract_product_info(page, ean)
-                                
-                                if product:
-                                    results.append({
-                                        "Pvm": current_date,
-                                        "Kaupunki/Kauppa": store_name,
-                                        "Hakusana": ean,
-                                        "Tuote": product['name'][:100],
-                                        "Hinta (EUR)": product['price']
-                                    })
-                                    print(f"✅ {product['price']}€")
-                                else:
-                                    print("❌")
-                                
-                                # Clear search
-                                search_box.fill("")
-                                time.sleep(random.uniform(1, 2))
-                                
-                            except Exception as e:
-                                print(f"⚠️ Error: {str(e)[:30]}")
-                                continue
-                        
-                        break
-                        
-                except:
+                # Check if we got blocked
+                if response.status_code == 403 or response.status_code == 429:
+                    print(f"  ⚠️ Blocked (Status {response.status_code}), retry {attempt + 1}/{max_retries}")
+                    time.sleep(delay * (attempt + 1))
                     continue
-            
-            if not search_found:
-                print(f"  ⚠️ No search box found, trying direct URLs...")
-                
-                # Method 2: Direct search URLs
-                for i, ean in enumerate(ean_list, 1):
-                    print(f"    [{i}/{len(ean_list)}] {ean}...", end=" ")
                     
-                    try:
-                        search_url = f"https://www.k-ruoka.fi/kauppa/{store_slug}/haku?q={ean}"
-                        
-                        # Navigate with human-like delay
-                        time.sleep(random.uniform(1, 2))
-                        page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
-                        time.sleep(random.uniform(2, 3))
-                        
-                        # Extract product info
-                        product = extract_product_info(page, ean)
-                        
-                        if product:
-                            results.append({
-                                "Pvm": current_date,
-                                "Kaupunki/Kauppa": store_name,
-                                "Hakusana": ean,
-                                "Tuote": product['name'][:100],
-                                "Hinta (EUR)": product['price']
-                            })
-                            print(f"✅ {product['price']}€")
-                        else:
-                            print("❌")
-                            
-                    except Exception as e:
-                        print(f"⚠️ {str(e)[:30]}")
-                        continue
+                return response
+                
+            except requests.exceptions.Timeout:
+                print(f"  ⚠️ Timeout, retry {attempt + 1}/{max_retries}")
+                time.sleep(delay * (attempt + 1))
+            except Exception as e:
+                print(f"  ⚠️ Error: {str(e)[:50]}, retry {attempt + 1}/{max_retries}")
+                time.sleep(delay * (attempt + 1))
+        
+        return None
+    
+    def find_store_id(self, store_slug: str) -> Optional[str]:
+        """Try to find store ID from various sources"""
+        print(f"  🔍 Looking for store ID...")
+        
+        # Try different approaches
+        approaches = [
+            # Approach 1: Try to get store page and extract ID
+            lambda: self._extract_id_from_store_page(store_slug),
             
-            browser.close()
+            # Approach 2: Try to find in sitemap or robots.txt
+            lambda: self._find_id_from_robots(store_slug),
             
-            print(f"  {'─' * 50}")
-            print(f"  📊 Found {len(results)}/{len(ean_list)} products")
+            # Approach 3: Try known patterns
+            lambda: self._try_known_patterns(store_slug),
+        ]
+        
+        for approach in approaches:
+            try:
+                store_id = approach()
+                if store_id:
+                    print(f"  ✅ Found store ID: {store_id}")
+                    return store_id
+            except:
+                continue
+        
+        print(f"  ❌ Could not find store ID")
+        return None
+    
+    def _extract_id_from_store_page(self, store_slug: str) -> Optional[str]:
+        """Extract store ID from store page HTML"""
+        store_url = f"{self.base_url}/kauppa/{store_slug}"
+        response = self.get_with_retry(store_url)
+        
+        if response and response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
             
-            return results
+            # Look for store ID in various places
+            # 1. In meta tags
+            meta_tags = soup.find_all('meta')
+            for tag in meta_tags:
+                content = tag.get('content', '')
+                if 'store' in content.lower() and any(char.isdigit() for char in content):
+                    # Extract numbers
+                    numbers = re.findall(r'\d+', content)
+                    if numbers:
+                        return numbers[0]
             
-        except Exception as e:
-            print(f"  ❌ Fatal error: {str(e)}")
-            return results
-
-def extract_product_info(page, ean):
-    """Extract product information from page"""
-    try:
-        # Try multiple selectors for products
+            # 2. In script tags with JSON data
+            script_tags = soup.find_all('script')
+            for script in script_tags:
+                if script.string and 'store' in script.string.lower() and 'id' in script.string.lower():
+                    # Try to parse as JSON or extract ID
+                    id_match = re.search(r'"storeId"\s*:\s*["\']?(\d+)["\']?', script.string)
+                    if id_match:
+                        return id_match.group(1)
+                    
+                    id_match = re.search(r'"id"\s*:\s*["\']?(\d+)["\']?', script.string)
+                    if id_match and 'store' in script.string.lower():
+                        return id_match.group(1)
+            
+            # 3. In data attributes
+            body = soup.find('body')
+            if body:
+                data_store = body.get('data-store')
+                if data_store:
+                    numbers = re.findall(r'\d+', data_store)
+                    if numbers:
+                        return numbers[0]
+        
+        return None
+    
+    def _find_id_from_robots(self, store_slug: str) -> Optional[str]:
+        """Try to find store ID from robots.txt or sitemap"""
+        # This is a placeholder - might need to be adjusted
+        return None
+    
+    def _try_known_patterns(self, store_slug: str) -> Optional[str]:
+        """Try known store ID patterns"""
+        # Some store slugs might map to IDs
+        store_patterns = {
+            "k-citymarket-espoo-iso-omena": "001",
+            "k-citymarket-jyvaskyla-seppala": "002",
+            # Add more if known
+        }
+        
+        return store_patterns.get(store_slug)
+    
+    def search_product(self, store_slug: str, ean: str, store_name: str) -> Optional[Dict]:
+        """Search for a product using EAN code"""
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        
+        print(f"    Searching EAN {ean}...", end=" ")
+        
+        # Try multiple search methods
+        search_methods = [
+            self._search_via_direct_url,
+            self._search_via_api,
+            self._search_via_html_parsing,
+        ]
+        
+        for method in search_methods:
+            try:
+                result = method(store_slug, ean, store_name, current_date)
+                if result:
+                    price = result.get('Hinta (EUR)', 0)
+                    print(f"✅ {price}€")
+                    return result
+            except Exception as e:
+                continue
+        
+        print("❌")
+        return None
+    
+    def _search_via_direct_url(self, store_slug: str, ean: str, store_name: str, current_date: str) -> Optional[Dict]:
+        """Search via direct search URL"""
+        search_url = f"{self.base_url}/kauppa/{store_slug}/haku"
+        params = {'q': ean}
+        
+        response = self.get_with_retry(search_url, params=params)
+        if not response or response.status_code != 200:
+            return None
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Look for product cards
         product_selectors = [
-            '[data-testid="product-card"]',
             '.product-card',
-            '.product-item',
+            '[data-testid="product-card"]',
             '.search-result-item',
+            '.product-item',
             'article',
-            '.product',
-            '[class*="productCard"]',
-            '.card'
         ]
         
         for selector in product_selectors:
-            try:
-                products = page.locator(selector)
-                count = products.count()
+            products = soup.select(selector)
+            if products:
+                # Take first product
+                product = products[0]
                 
-                if count > 0:
-                    # Check first 3 products
-                    for i in range(min(count, 3)):
-                        try:
-                            product = products.nth(i)
-                            
-                            # Get all text
-                            text = product.inner_text(timeout=3000)
-                            lines = [line.strip() for line in text.split('\n') if line.strip()]
-                            
-                            if not lines:
-                                continue
-                            
-                            # Find product name (usually the longest text)
-                            name = max(lines, key=len)
-                            clean_name = clean_text(name)
-                            
-                            # Skip excluded
-                            if any(bad in clean_name.lower() for bad in EXCLUDE_KEYWORDS):
-                                continue
-                            
-                            # Find price
-                            price = None
-                            for line in lines:
-                                # Look for price patterns
-                                price_match = re.search(r'(\d+[\.,]\d+)\s*€?', line)
-                                if price_match:
-                                    try:
-                                        price_str = price_match.group(1).replace(',', '.')
-                                        price = float(price_str)
-                                        
-                                        # Additional validation: price should be reasonable
-                                        if 0.1 <= price <= 100:  # Assuming reasonable price range
-                                            return {
-                                                'name': clean_name,
-                                                'price': price
-                                            }
-                                    except:
-                                        continue
-                            
-                        except:
+                # Extract name
+                name_elements = product.select('h2, h3, h4, [class*="name"], [class*="title"]')
+                name = name_elements[0].get_text(strip=True) if name_elements else product.get_text(strip=True)[:100]
+                
+                # Skip excluded
+                if any(bad in name.lower() for bad in EXCLUDE_KEYWORDS):
+                    return None
+                
+                # Extract price
+                price_elements = product.select('[class*="price"], [data-testid*="price"]')
+                price_text = price_elements[0].get_text(strip=True) if price_elements else ""
+                
+                # Find price in text
+                price_match = re.search(r'(\d+[\.,]\d+)\s*€?', price_text)
+                if not price_match:
+                    # Try in entire product text
+                    all_text = product.get_text()
+                    price_match = re.search(r'(\d+[\.,]\d+)\s*€?', all_text)
+                
+                if price_match:
+                    price = float(price_match.group(1).replace(',', '.'))
+                    
+                    return {
+                        "Pvm": current_date,
+                        "Kaupunki/Kauppa": store_name,
+                        "Hakusana": ean,
+                        "Tuote": clean_text(name)[:100],
+                        "Hinta (EUR)": price
+                    }
+        
+        return None
+    
+    def _search_via_api(self, store_slug: str, ean: str, store_name: str, current_date: str) -> Optional[Dict]:
+        """Try to find product via API calls"""
+        # First get store ID
+        store_id = self.find_store_id(store_slug)
+        if not store_id:
+            return None
+        
+        # Try different API endpoints
+        api_endpoints = [
+            f"{self.base_url}/api/v1/stores/{store_id}/products?search={ean}",
+            f"{self.base_url}/api/products?ean={ean}&storeId={store_id}",
+            f"{self.base_url}/kr-api/search?q={ean}&store={store_slug}",
+        ]
+        
+        for endpoint in api_endpoints:
+            try:
+                response = self.session.get(endpoint, timeout=15)
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Parse different response formats
+                    products = []
+                    
+                    if isinstance(data, list):
+                        products = data
+                    elif isinstance(data, dict) and 'products' in data:
+                        products = data['products']
+                    elif isinstance(data, dict) and 'items' in data:
+                        products = data['items']
+                    
+                    for product in products[:3]:  # Check first 3
+                        if not isinstance(product, dict):
                             continue
+                        
+                        name = product.get('name', product.get('productName', ''))
+                        if not name:
+                            continue
+                        
+                        # Skip excluded
+                        if any(bad in name.lower() for bad in EXCLUDE_KEYWORDS):
+                            continue
+                        
+                        price = product.get('price', product.get('currentPrice'))
+                        if price:
+                            return {
+                                "Pvm": current_date,
+                                "Kaupunki/Kauppa": store_name,
+                                "Hakusana": ean,
+                                "Tuote": clean_text(name)[:100],
+                                "Hinta (EUR)": price
+                            }
                             
             except:
                 continue
         
         return None
+    
+    def _search_via_html_parsing(self, store_slug: str, ean: str, store_name: str, current_date: str) -> Optional[Dict]:
+        """Fallback: Parse HTML directly"""
+        # This is a simple fallback if other methods fail
+        search_url = f"{self.base_url}/kauppa/{store_slug}/haku?q={ean}"
         
-    except Exception as e:
+        response = self.get_with_retry(search_url)
+        if not response or response.status_code != 200:
+            return None
+        
+        # Simple regex search for products in HTML
+        html = response.text
+        
+        # Look for product patterns
+        product_patterns = [
+            r'<h[2-4][^>]*>([^<]+)</h[2-4]>.*?(\d+[\.,]\d+)\s*€',
+            r'class="[^"]*product[^"]*"[^>]*>.*?<span[^>]*>([^<]+)</span>.*?(\d+[\.,]\d+)',
+            r'data-product-name="([^"]+)"[^>]*data-product-price="([^"]+)"',
+        ]
+        
+        for pattern in product_patterns:
+            matches = re.findall(pattern, html, re.DOTALL | re.IGNORECASE)
+            for match in matches:
+                if len(match) >= 2:
+                    name = match[0].strip()
+                    price_str = match[1].strip()
+                    
+                    # Skip excluded
+                    if any(bad in name.lower() for bad in EXCLUDE_KEYWORDS):
+                        continue
+                    
+                    # Clean price
+                    price_match = re.search(r'(\d+[\.,]\d+)', price_str)
+                    if price_match:
+                        price = float(price_match.group(1).replace(',', '.'))
+                        
+                        return {
+                            "Pvm": current_date,
+                            "Kaupunki/Kauppa": store_name,
+                            "Hakusana": ean,
+                            "Tuote": clean_text(name)[:100],
+                            "Hinta (EUR)": price
+                        }
+        
         return None
 
 def main():
-    print("🤖 Potwell Matrix-Robotti (Ultimate Stealth Mode)")
+    print("🤖 Potwell Matrix-Robotti (Requests-Based Approach)")
     print(f"⏰ Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'=' * 60}")
     
-    # Test mode - only one store
+    # Test with minimal setup
     TEST_MODE = True
-    TEST_STORE = "Espoo (Iso Omena)"
-    TEST_SLUG = "k-citymarket-espoo-iso-omena"
-    TEST_PRODUCTS = SEARCH_QUERIES[:5]  # Test with 5 products
+    TEST_STORE_NAME = "Espoo (Iso Omena)"
+    TEST_STORE_SLUG = "k-citymarket-espoo-iso-omena"
+    TEST_PRODUCTS = SEARCH_QUERIES[:3]  # Just 3 for testing
     
     if TEST_MODE:
-        print("🔧 TEST MODE - Testing one store only")
-        my_stores = {TEST_STORE: TEST_SLUG}
-        products_to_check = TEST_PRODUCTS
+        print("🔧 TEST MODE - Testing one store with 3 products")
+        stores_to_process = [(TEST_STORE_NAME, TEST_STORE_SLUG)]
+        products_per_store = TEST_PRODUCTS
     else:
         bot_id = int(os.environ.get("BOT_ID", 1))
         total_bots = int(os.environ.get("TOTAL_BOTS", 1))
@@ -523,55 +453,83 @@ def main():
         chunk_size = math.ceil(len(all_stores) / total_bots)
         start_index = (bot_id - 1) * chunk_size
         end_index = start_index + chunk_size
-        my_stores = dict(all_stores[start_index:end_index])
-        products_to_check = SEARCH_QUERIES
+        stores_to_process = list(dict(all_stores[start_index:end_index]).items())
+        products_per_store = SEARCH_QUERIES
     
-    print(f"📋 Stores to process: {len(my_stores)}")
-    print(f"📦 Products per store: {len(products_to_check)}")
+    print(f"📋 Stores to process: {len(stores_to_process)}")
+    print(f"📦 Products per store: {len(products_per_store)}")
     print(f"{'=' * 60}")
     
     all_data = []
     
-    for store_name, store_slug in my_stores.items():
+    # Initialize scraper
+    scraper = KRuokaScraper()
+    
+    for store_name, store_slug in stores_to_process:
         print(f"\n{'=' * 60}")
         print(f"🛒 PROCESSING: {store_name}")
         print(f"{'=' * 60}")
         
         start_time = time.time()
+        store_data = []
         
-        try:
-            store_data = fetch_with_stealth(store_name, store_slug, products_to_check)
+        # First, test if we can access the store
+        print(f"  Testing store access...", end=" ")
+        test_url = f"https://www.k-ruoka.fi/kauppa/{store_slug}"
+        response = scraper.get_with_retry(test_url)
+        
+        if response:
+            print(f"✅ Status: {response.status_code}")
             
-            if store_data:
-                all_data.extend(store_data)
-                print(f"✅ Found {len(store_data)} products")
+            # Check if we got actual content or redirect/block
+            if response.status_code == 200 and len(response.text) > 1000:
+                print(f"  ✅ Store accessible")
                 
-                # Save immediately
-                save_to_sheet(store_data)
+                # Process products
+                for i, ean in enumerate(products_per_store, 1):
+                    print(f"  [{i}/{len(products_per_store)}] ", end="")
+                    
+                    # Add delay between requests
+                    if i > 1:
+                        time.sleep(random.uniform(1, 2))
+                    
+                    product_data = scraper.search_product(store_slug, ean, store_name)
+                    if product_data:
+                        store_data.append(product_data)
+                
+                if store_data:
+                    all_data.extend(store_data)
+                    print(f"  ✅ Found {len(store_data)} products")
+                    
+                    # Save store data
+                    save_to_sheet(store_data)
+                else:
+                    print(f"  ⚠️ No products found in this store")
+                    
             else:
-                print(f"⚠️ No products found")
-            
-            elapsed = time.time() - start_time
-            print(f"⏱️ Time taken: {elapsed:.1f}s")
-            
-        except Exception as e:
-            print(f"❌ Store failed: {str(e)}")
+                print(f"  ❌ Store not accessible (Status: {response.status_code})")
+                print(f"  📄 Response preview: {response.text[:200]}")
+        else:
+            print(f"❌ Could not connect to store")
         
-        # Long delay between stores
-        if len(my_stores) > 1:
-            delay = random.uniform(10, 20)
-            print(f"⏳ Waiting {delay:.1f}s before next store...")
+        elapsed = time.time() - start_time
+        print(f"  ⏱️ Time taken: {elapsed:.1f}s")
+        
+        # Delay between stores
+        if len(stores_to_process) > 1:
+            delay = random.uniform(5, 10)
+            print(f"  ⏳ Waiting {delay:.1f}s before next store...")
             time.sleep(delay)
     
     # Final summary
     print(f"\n{'=' * 60}")
     print("📊 FINAL SUMMARY")
     print(f"{'=' * 60}")
-    print(f"✅ Total stores processed: {len(my_stores)}")
+    print(f"✅ Total stores processed: {len(stores_to_process)}")
     print(f"✅ Total products found: {len(all_data)}")
     
     if all_data:
-        print(f"\n💾 Saving final data...")
+        print(f"\n💾 Saving all data...")
         save_to_sheet(all_data)
     
     print(f"\n{'=' * 60}")
