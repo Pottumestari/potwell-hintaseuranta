@@ -2,4 +2,6 @@ streamlit
 pandas
 altair
 gspread
+playwright
+pytest-playwright
 oauth2client
