@@ -11,7 +11,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 # --- ASETUKSET ---
 SHEET_NAME = 'Potwell Data'
 
-# 1. KAUPPALISTA
 STORES_TO_CHECK = {
     "Espoo (Iso Omena)": "k-citymarket-espoo-iso-omena",
     "Jyväskylä (Seppälä)": "k-citymarket-jyvaskyla-seppala",
@@ -39,7 +38,6 @@ STORES_TO_CHECK = {
     "Helsinki (SM Saari)": "k-supermarket-saari"
 }
 
-# 2. EAN-KOODIT
 SEARCH_QUERIES = [
     "6410405093080", "6410405041937", "6410402024469", "6410402008933", 
     "6410402024445", "6410405330727", "6415350002804", "2000623600005", 
@@ -132,32 +130,51 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     try:
-        # KORJAUS 1: wait_until='domcontentloaded' estää jumiutumisen
+        # 1. Ladataan sivu
         page.goto(store_url, timeout=30000, wait_until="domcontentloaded")
         print("Sivu ladattu.", end=" ", flush=True)
+        time.sleep(2) # Annetaan hetki aikaa renderöityä
         
-        # Kokeillaan ohittaa evästeet nopeasti
+        # 2. EVÄSTEET (Tämä on usein syy miksi haku ei toimi)
         try:
-            page.click("button:has-text('Hyväksy')", timeout=3000)
+            # Etsitään "Hyväksy"-nappia monella eri tavalla
+            cookie_btn = page.locator("button:has-text('Hyväksy'), button:has-text('Hyväksy kaikki'), #onetrust-accept-btn-handler")
+            if cookie_btn.count() > 0 and cookie_btn.first.is_visible():
+                cookie_btn.first.click(timeout=3000)
+                print("(Evästeet OK)", end=" ", flush=True)
+                time.sleep(1)
         except: pass
         
-        # Kokeillaan avata haku
+        # 3. HAKUKENTÄN AVAAMINEN
+        # K-Ruoka piilottaa hakukentän usein. Etsitään ja klikataan hakunappia.
         try:
-            if page.is_visible("a[aria-label='Haku']"): 
-                page.click("a[aria-label='Haku']", timeout=3000)
+            search_icon = page.locator("a[aria-label='Haku'], button[aria-label='Haku'], .search-toggle")
+            if search_icon.count() > 0 and search_icon.first.is_visible():
+                search_icon.first.click(timeout=3000)
+                time.sleep(1)
         except: pass
 
-        search_input = "input[type='search'], input[type='text']"
+        # 4. VARMISTETAAN ETTÄ HAKUKENTTÄ ON NÄKYVISSÄ
+        search_input_selector = "input[type='search'], input[type='text'][placeholder*='Hae']"
+        try:
+            page.wait_for_selector(search_input_selector, state="visible", timeout=5000)
+        except Exception as e:
+            print(f"\n❌ VIRHE: Hakukenttää ei löytynyt! Sivun rakenne on muuttunut tai evästeet tiellä. ({e})")
+            return []
+
+        # 5. TUOTEHAKU
+        first_error = True # Tulostetaan vain ensimmäinen virhe tarkasti
         
         for search_term in product_list:
             try:
-                # KORJAUS 2: Lyhyet timeoutit hakuihin, jotta ei jäädä jumiin
-                page.fill(search_input, search_term, timeout=3000)
+                page.fill(search_input_selector, search_term, timeout=3000)
                 page.keyboard.press("Enter")
                 time.sleep(1.5) 
                 
+                # Etsitään kortit
                 cards = page.locator("[data-testid='product-card']").all()
                 if not cards: cards = page.locator("article").all()
+                if not cards: cards = page.locator(".product-card").all()
                 
                 if not cards:
                     print("x", end="", flush=True)
@@ -200,13 +217,17 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
                     except: continue
                 
                 if not found: print("o", end="", flush=True) 
-            except: 
-                print("!", end="", flush=True) 
+            except Exception as e: 
+                if first_error:
+                    print(f"\n⚠️ HAKUVIRHE ({search_term}): {e}")
+                    first_error = False
+                else:
+                    print("!", end="", flush=True)
                 continue
         print("") 
         return store_results
     except Exception as e: 
-        print(f"\n⚠️ Virhe kaupassa {store_name}: {e}")
+        print(f"\n⚠️ Kriittinen virhe kaupassa {store_name}: {e}")
         return []
 
 def main():
@@ -228,8 +249,6 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled"])
         context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36")
-        
-        # KORJAUS 3: Globaali timeout 30s kaikkiin toimintoihin (ei jää jumiin)
         context.set_default_timeout(30000)
         
         page = context.new_page()
