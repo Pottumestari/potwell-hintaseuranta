@@ -11,7 +11,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # --- ASETUKSET ---
 SHEET_NAME = 'Potwell Data'
 
-# 1. KAUPPALISTA (24 kpl)
+# 1. KAUPPALISTA
 STORES_TO_CHECK = {
     "Espoo (Iso Omena)": "k-citymarket-espoo-iso-omena",
     "Jyväskylä (Seppälä)": "k-citymarket-jyvaskyla-seppala",
@@ -89,7 +89,7 @@ def save_to_sheet(data_list):
     print(f"💾 save_to_sheet kutsuttu. Rivejä listassa: {len(data_list)}")
 
     if not data_list: 
-        print("⚠️ Lista on tyhjä! Skrapperi ei löytänyt tuotteita, joten Sheetsiin ei kirjoiteta.")
+        print("⚠️ Lista on tyhjä, mitään ei tallenneta.")
         return
 
     try:
@@ -124,42 +124,37 @@ def save_to_sheet(data_list):
     if new_rows:
         sheet.append_rows(new_rows)
         print(f"✅ Tallennettu {len(new_rows)} uutta riviä.")
-    else:
-        print("ℹ️ Data haettiin, mutta kaikki rivit olivat jo Sheetsissä (duplikaatit).")
 
 def fetch_prices_from_store(page, store_name, store_slug, product_list):
-    print(f"\n🏪 {store_name}...")
+    print(f"\n🏪 {store_name}...", end=" ", flush=True)
     store_url = f"https://www.k-ruoka.fi/kauppa/{store_slug}"
     store_results = []
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     try:
-        page.goto(store_url, timeout=45000)
+        # KORJAUS 1: wait_until='domcontentloaded' estää jumiutumisen
+        page.goto(store_url, timeout=30000, wait_until="domcontentloaded")
+        print("Sivu ladattu.", end=" ", flush=True)
         
+        # Kokeillaan ohittaa evästeet nopeasti
         try:
-            if page.locator("text=Verify you are human").count() > 0:
-                print("⚠️ CAPTCHA havaittu! Yritä ratkaista se käsin...")
-                time.sleep(15)
+            page.click("button:has-text('Hyväksy')", timeout=3000)
         except: pass
-
+        
+        # Kokeillaan avata haku
         try:
-            page.wait_for_selector("button:has-text('Hyväksy')", timeout=4000)
-            page.click("button:has-text('Hyväksy')")
-        except: pass
-        try:
-            if page.is_visible("a[aria-label='Haku']"): page.click("a[aria-label='Haku']")
+            if page.is_visible("a[aria-label='Haku']"): 
+                page.click("a[aria-label='Haku']", timeout=3000)
         except: pass
 
         search_input = "input[type='search'], input[type='text']"
         
         for search_term in product_list:
             try:
-                page.click(search_input)
-                page.keyboard.press("Control+A")
-                page.keyboard.press("Backspace")
-                page.fill(search_input, search_term)
+                # KORJAUS 2: Lyhyet timeoutit hakuihin, jotta ei jäädä jumiin
+                page.fill(search_input, search_term, timeout=3000)
                 page.keyboard.press("Enter")
-                time.sleep(2) 
+                time.sleep(1.5) 
                 
                 cards = page.locator("[data-testid='product-card']").all()
                 if not cards: cards = page.locator("article").all()
@@ -211,7 +206,7 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
         print("") 
         return store_results
     except Exception as e: 
-        print(f"⚠️ Virhe: {e}")
+        print(f"\n⚠️ Virhe kaupassa {store_name}: {e}")
         return []
 
 def main():
@@ -230,10 +225,13 @@ def main():
     
     print(f"👷 Olen robotti {bot_id}/{total_bots}. Minulle kuuluu {len(my_stores)} kauppaa.")
     
-    # --- HUOM: Aja headless=False nähdäksesi selaimen ---
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled"])
         context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36")
+        
+        # KORJAUS 3: Globaali timeout 30s kaikkiin toimintoihin (ei jää jumiin)
+        context.set_default_timeout(30000)
+        
         page = context.new_page()
         page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
