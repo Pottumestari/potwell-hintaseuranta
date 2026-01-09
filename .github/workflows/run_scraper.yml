@@ -2,10 +2,9 @@ name: Run Price Agent
 
 on:
   schedule:
-   # Aja maanantaisin (1) ja keskiviikkoisin (3) klo 04:00 UTC 
-   # (Tämä on Suomen talviajassa klo 06:00 ja kesäajassa klo 07:00)
-    - cron: '0 6 * * 1,3'
-  workflow_dispatch: # Mahdollistaa manuaalisen käynnistyksen napista
+    # Ma ja Ke klo 06:00 Suomen aikaa (04:00 UTC)
+    - cron: '0 4 * * 1,3'
+  workflow_dispatch:
 
 jobs:
   scrape_and_update:
@@ -28,4 +27,6 @@ jobs:
       - name: Run Price Agent
         env:
           GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+          # TÄMÄ RIVI PAKOTTAA TEKSTIN NÄKYVIIN HETI:
+          PYTHONUNBUFFERED: "1"
         run: python price_agent.py
