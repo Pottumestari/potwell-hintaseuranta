@@ -3,7 +3,6 @@ import re
 import os
 import json
 import math
-import random
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 import gspread
@@ -130,45 +129,65 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     try:
-        # STEALTH: Hidas lataus ja odotus
         page.goto(store_url, timeout=60000, wait_until="domcontentloaded")
         time.sleep(3) 
 
-        # STEALTH: Satunnainen hiiren heilautus (simuloitu)
-        try: page.mouse.move(100, 100)
-        except: pass
+        # --- RATKAISU: TUHOTAAN EVÄSTEIKKUNAT CSS:LLÄ ---
+        # Tämä tekee kaikista häiritsevistä elementeistä näkymättömiä.
+        # Robotin ei tarvitse painaa "Hyväksy", koska ikkunaa ei enää ole.
+        page.add_style_tag(content="""
+            #onetrust-banner-sdk, 
+            .onetrust-pc-dark-filter, 
+            div[id^="onetrust-"],
+            .k-ruoka-cookie-consent,
+            .chat-widget,
+            iframe[title*="chat"],
+            button[aria-label="Chat"] { 
+                display: none !important; 
+                visibility: hidden !important;
+                pointer-events: none !important;
+            }
+        """)
+        print("(Siivottu)", end=" ", flush=True)
 
-        # Evästeet
-        try:
-            cookie_btn = page.locator("button:has-text('Hyväksy'), button:has-text('Hyväksy kaikki')")
-            if cookie_btn.count() > 0:
-                cookie_btn.first.click(timeout=4000)
-                time.sleep(1)
-        except: pass
-
-        # Haku auki
-        try:
-            search_icon = page.locator("a[aria-label='Haku'], button[aria-label='Haku']")
-            if search_icon.count() > 0 and search_icon.first.is_visible():
-                search_icon.first.click(timeout=4000)
-                time.sleep(1)
-        except: pass
-
+        # Etsitään hakukenttää tai nappia
         search_input_sel = "input[type='search'], input[type='text'][placeholder*='Hae']"
-        
-        # Varmistetaan että hakukenttä löytyy
-        try:
-            page.wait_for_selector(search_input_sel, state="visible", timeout=10000)
-        except:
-            print(f"\n❌ Hakukenttä ei auennut (Estetty/Piilotettu).")
-            return []
+        search_icon_sel = "a[aria-label='Haku'], button[aria-label='Haku'], .search-toggle"
 
+        # 1. Yritetään avata haku
+        try:
+            # Tarkistetaan ensin, onko haku jo auki
+            if not page.is_visible(search_input_sel):
+                if page.locator(search_icon_sel).count() > 0:
+                    # FORCE CLICK: Käytetään JavaScriptiä klikkaamiseen (ohittaa kaikki esteet)
+                    page.locator(search_icon_sel).first.evaluate("el => el.click()")
+                    time.sleep(1)
+        except: pass
+
+        # 2. Varmistetaan että hakukenttä on käytettävissä
+        try:
+            page.wait_for_selector(search_input_sel, state="visible", timeout=8000)
+        except:
+            # JOS HAKU EI AUKEA: Kokeillaan suoraan URL-kikkaa ensimmäiselle tuotteelle
+            # Tämä paljastaa onko vika hakukentässä vai koko sivussa
+            print(f"\n❌ Hakukenttä jumissa. Kokeillaan URL-hakua...")
+            pass
+
+        # 3. Silmukka tuotteille
         for search_term in product_list:
             try:
-                page.fill(search_input_sel, search_term)
-                time.sleep(0.2) # Ihmismäinen viive
-                page.keyboard.press("Enter")
-                time.sleep(2) # Odotetaan tuloksia
+                # Jos hakukenttä on näkyvissä, käytetään sitä (nopeampi)
+                if page.is_visible(search_input_sel):
+                    page.fill(search_input_sel, search_term)
+                    time.sleep(0.1)
+                    page.keyboard.press("Enter")
+                else:
+                    # VARASUUNNITELMA: Jos hakukenttä ei aukea, mennään suoraan URL:lla
+                    # Tämä on hitaampi mutta varmempi
+                    direct_url = f"https://www.k-ruoka.fi/kauppa/{store_slug}/haku?q={search_term}"
+                    page.goto(direct_url, wait_until="domcontentloaded")
+                
+                time.sleep(2) # Odotetaan latausta
                 
                 cards = page.locator("[data-testid='product-card']").all()
                 if not cards: cards = page.locator("article").all()
@@ -224,7 +243,7 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
         return []
 
 def main():
-    print("🤖 Aloitetaan Potwell Matrix-Robotti (STEALTH CLOUD MODE)...")
+    print("🤖 Aloitetaan Potwell Matrix-Robotti (CLOUDFIX V2)...")
     
     bot_id = int(os.environ.get("BOT_ID", 1))
     total_bots = int(os.environ.get("TOTAL_BOTS", 1))
@@ -238,40 +257,26 @@ def main():
     print(f"👷 Olen robotti {bot_id}/{total_bots}. Minulle kuuluu {len(my_stores)} kauppaa.")
     
     with sync_playwright() as p:
-        # --- TÄMÄ ON SE TÄRKEIN OSA PILVEÄ VARTEN ---
-        # 1. Käytetään "New Headless" tilaa (se näyttää enemmän oikealta selaimelta)
-        # 2. Asetetaan oikea User-Agent
-        # 3. Asetetaan ikkunan koko (ettei ole 0x0)
-        
         browser = p.chromium.launch(
-            headless=True,  # Pilvessä pakko olla True
+            headless=True,
             args=[
-                "--headless=new",  # The magic switch
+                "--headless=new",
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
-                "--disable-infobars",
-                "--window-size=1920,1080",
-                "--start-maximized"
+                "--window-size=1920,1080"
             ]
         )
         
-        # Luodaan konteksti, joka näyttää suomalaiselta kotikoneelta
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
             viewport={"width": 1920, "height": 1080},
             locale="fi-FI",
-            timezone_id="Europe/Helsinki",
-            screen={"width": 1920, "height": 1080}
+            timezone_id="Europe/Helsinki"
         )
         
-        # Poistetaan "webdriver" ominaisuus kokonaan JavaScriptillä
         page = context.new_page()
-        page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-        """)
+        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
         for i, (name, slug) in enumerate(my_stores.items(), 1):
             print(f"[{i}/{len(my_stores)}] Robotti {bot_id} työssä...")
