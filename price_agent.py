@@ -1,6 +1,7 @@
 import time
 import re
 import os
+import json
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 import gspread
@@ -8,7 +9,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # --- ASETUKSET ---
 SHEET_NAME = 'Potwell Data'       # Google Sheetin nimi
-JSON_FILE = 'service_account.json' # Avaintiedosto
 
 # 1. KAUPPALISTA
 STORES_TO_CHECK = {
@@ -61,6 +61,24 @@ def clean_text(text):
     text = text.replace('\u2212', '-').replace('–', '-').replace(',', '.').replace('€', '').strip()
     return text.encode('ascii', 'ignore').decode('ascii').strip()
 
+def get_google_creds():
+    """Hakee Google-tunnukset joko tiedostosta tai ympäristömuuttujasta (GitHub Actions)"""
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    
+    # 1. Kokeillaan lukea GitHubin salaisuuksista (Ympäristömuuttuja)
+    json_creds = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
+    if json_creds:
+        print("🔑 Käytetään GitHub Secrets -tunnuksia.")
+        creds_dict = json.loads(json_creds)
+        return ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    
+    # 2. Jos ei löydy, kokeillaan paikallista tiedostoa (Kotikone)
+    if os.path.exists("service_account.json"):
+        # print("🏠 Käytetään paikallista service_account.json -tiedostoa.")
+        return ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
+    
+    raise Exception("Virhe: Google-tunnuksia ei löytynyt (ei env-muuttujaa eikä tiedostoa).")
+
 def laske_kilohinta_nimesta(tuote_nimi, paketti_hinta):
     """VARAJÄRJESTELMÄ: Laskee kilohinnan, jos sivulta ei löydy suoraa mainintaa."""
     if not paketti_hinta or not tuote_nimi: return None
@@ -86,12 +104,11 @@ def save_to_sheet(data_list):
     
     print("☁️  Yhdistetään Google Sheetsiin...")
     try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name(JSON_FILE, scope)
+        creds = get_google_creds()
         client = gspread.authorize(creds)
         sheet = client.open(SHEET_NAME).sheet1
     except Exception as e:
-        print(f"❌ VIRHE: Ei saatu yhteyttä Sheetsiin. Onko 'service_account.json' kansiossa? Virhe: {e}")
+        print(f"❌ VIRHE: Ei saatu yhteyttä Sheetsiin. {e}")
         return
 
     # 1. Tarkistetaan onko otsikot olemassa, jos sheet on tyhjä
@@ -107,7 +124,6 @@ def save_to_sheet(data_list):
     # Luodaan "avain" (pvm + kauppa + ean) nopeaa tarkistusta varten
     existing_keys = set()
     for row in existing_records:
-        # Varmistetaan että avaimet ovat string-muodossa vertailua varten
         pvm = str(row.get('pvm', ''))
         kauppa = str(row.get('kauppa', ''))
         ean = str(row.get('ean', ''))
@@ -115,28 +131,32 @@ def save_to_sheet(data_list):
         existing_keys.add(key)
         
     new_rows = []
-    count = 0
     
     for item in data_list:
-        # Luodaan tarkistusavain tälle uudelle riville
         key = f"{item['Pvm']}_{item['Kaupunki/Kauppa']}_{item['Hakusana']}"
         
         if key not in existing_keys:
+            # Varmistetaan että hinta on float eikä string, korvataan pilkku pisteellä
+            raw_price = str(item['Hinta (EUR)']).replace(',', '.')
+            try:
+                price_float = float(raw_price)
+            except:
+                price_float = 0.0
+
             # Rakenne: [pvm, kauppa, tuote, ean, hinta]
             row = [
                 item['Pvm'],
                 item['Kaupunki/Kauppa'],
                 item['Tuote'],
                 item['Hakusana'], # EAN
-                item['Hinta (EUR)']
+                price_float       # Hinta numerona
             ]
             new_rows.append(row)
-            print(f"    Tallennettu puskuriin: {item['Tuote']} ({item['Hinta (EUR)']} €)")
-            count += 1
+            print(f"    Tallennettu puskuriin: {item['Tuote']} ({price_float} €)")
         else:
-            pass # Löytyi jo, ei tehdä mitään
+            pass 
 
-    # 3. Lähetetään uudet rivit pilveen yhtenä pakettina (nopeampi)
+    # 3. Lähetetään uudet rivit pilveen yhtenä pakettina
     if new_rows:
         print(f"📤 Lähetetään {len(new_rows)} uutta riviä pilveen...")
         sheet.append_rows(new_rows)
@@ -191,7 +211,7 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
                 cards = page.locator("[data-testid='product-card']").all()
                 if not cards: cards = page.locator("article").all()
                 
-                found_for_this_ean = False # Seurataan löytyikö tällä haulla mitään
+                found_for_this_ean = False 
 
                 for card in cards:
                     try:
@@ -199,12 +219,10 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
                         lines = full_text.split('\n')
                         
                         name = lines[0].strip()
-                        # Jos eka rivi on outo, kokeillaan toista
                         if len(name) < 3 or "etu" in name.lower() or "%" in name or "hinta" in name.lower() or name[0].isdigit():
                             if len(lines) > 1: name = lines[1].strip()
                         
-                        # --- KORJAUS: K-Menu yhteensopivuus ---
-                        # Poistettu 'or "-" in name' tarkistus, jotta K-Menu kelpaa.
+                        # Varmistus: jos nimi on yhä pelkkä hinta, ohitetaan
                         if "hinta" in name.lower() or name[0].isdigit():
                             continue
                         
@@ -242,12 +260,11 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
                                 "Hinta (EUR)": final_kg_price
                             })
                             found_for_this_ean = True
-                            break # Oikea tuote löytyi, seuraava haku
+                            break 
                             
                     except Exception as e: continue
                 
                 if not found_for_this_ean:
-                    # Tulostetaan tieto, jos EANilla ei löytynyt mitään (Debuggausta varten)
                     print(f"    ⚠️  Ei löytynyt tuotetta haulla: {search_term}")
 
             except Exception as e: continue
