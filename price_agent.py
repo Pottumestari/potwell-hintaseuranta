@@ -2,6 +2,7 @@ import time
 import re
 import os
 import json
+import math
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 import gspread
@@ -10,7 +11,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # --- ASETUKSET ---
 SHEET_NAME = 'Potwell Data'
 
-# 1. KAUPPALISTA
+# 1. KAUPPALISTA (24 kpl)
 STORES_TO_CHECK = {
     "Espoo (Iso Omena)": "k-citymarket-espoo-iso-omena",
     "Jyväskylä (Seppälä)": "k-citymarket-jyvaskyla-seppala",
@@ -112,11 +113,7 @@ def save_to_sheet(data_list):
             raw_price = str(item['Hinta (EUR)']).replace(',', '.')
             try: price_float = float(raw_price)
             except: price_float = 0.0
-            
-            new_rows.append([
-                item['Pvm'], item['Kaupunki/Kauppa'], item['Tuote'],
-                item['Hakusana'], price_float
-            ])
+            new_rows.append([item['Pvm'], item['Kaupunki/Kauppa'], item['Tuote'], item['Hakusana'], price_float])
             print(f"   -> {item['Tuote']} ({price_float} €)")
 
     if new_rows:
@@ -132,37 +129,28 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
     try:
         page.goto(store_url, timeout=45000)
         
-        # Cloudflare-käsittely
         try:
             if page.locator("text=Verify you are human").count() > 0:
                 time.sleep(5)
         except: pass
 
-        # Hyväksy evästeet
         try:
             page.wait_for_selector("button:has-text('Hyväksy')", timeout=4000)
             page.click("button:has-text('Hyväksy')")
         except: pass
-        
-        # Avaa haku
         try:
-            if page.is_visible("a[aria-label='Haku']"): 
-                page.click("a[aria-label='Haku']")
+            if page.is_visible("a[aria-label='Haku']"): page.click("a[aria-label='Haku']")
         except: pass
 
         search_input = "input[type='search'], input[type='text']"
         
-        # Loopataan tuotteet
-        for i, search_term in enumerate(product_list):
+        for search_term in product_list:
             try:
-                # Nopea kirjoitus
                 page.click(search_input)
                 page.keyboard.press("Control+A")
                 page.keyboard.press("Backspace")
                 page.fill(search_input, search_term)
                 page.keyboard.press("Enter")
-                
-                # Optimoidaan odotusaika: 1.5 sekuntia riittää usein
                 time.sleep(1.5) 
                 
                 cards = page.locator("[data-testid='product-card']").all()
@@ -176,10 +164,8 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
                         name = lines[0].strip()
                         if len(name) < 3 or name[0].isdigit() or "hinta" in name.lower():
                             if len(lines) > 1: name = lines[1].strip()
-                        
                         if "hinta" in name.lower() or name[0].isdigit(): continue
                         name_clean = clean_text(name)
-                        
                         if any(bad in name_clean.lower() for bad in EXCLUDE_KEYWORDS): continue 
                         
                         final_price = None
@@ -199,50 +185,52 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
                         if final_price is not None:
                             store_results.append({
                                 "Pvm": current_date, "Kaupunki/Kauppa": store_name, 
-                                "Hakusana": search_term, "Tuote": name_clean, 
-                                "Hinta (EUR)": final_price
+                                "Hakusana": search_term, "Tuote": name_clean, "Hinta (EUR)": final_price
                             })
                             found = True
                             break 
                     except: continue
-                
-                if not found:
-                    # Tulostetaan vain pisteitä jotta logi ei täyty, paitsi jos ei löydy
-                    print(f".", end="", flush=True)
-
+                if not found: print(f".", end="", flush=True)
             except: continue
-        
-        print("") # Rivinvaihto lopuksi
+        print("") 
         return store_results
     except Exception as e: 
-        print(f"⚠️ Virhe kaupassa: {e}")
+        print(f"⚠️ Virhe: {e}")
         return []
 
 def main():
-    print("🚀 Aloitetaan Potwell Turbo-Robotti...")
+    print("🤖 Aloitetaan Potwell Matrix-Robotti...")
+    
+    # 1. HAE ROBOTIN NUMERO (GitHub antaa tämän)
+    # Jos ajat kotona, oletus on 1
+    bot_id = int(os.environ.get("BOT_ID", 1))
+    total_bots = int(os.environ.get("TOTAL_BOTS", 1))
+    
+    # 2. JAA KAUPAT ROBOTTIEN KESKEN
+    all_stores = list(STORES_TO_CHECK.items())
+    chunk_size = math.ceil(len(all_stores) / total_bots)
+    
+    start_index = (bot_id - 1) * chunk_size
+    end_index = start_index + chunk_size
+    
+    my_stores = dict(all_stores[start_index:end_index])
+    
+    print(f"👷 Olen robotti {bot_id}/{total_bots}. Minulle kuuluu {len(my_stores)} kauppaa.")
     
     with sync_playwright() as p:
-        # TÄRKEÄÄ: slow_mo POISTETTU kokonaan
-        browser = p.chromium.launch(
-            headless=True, 
-            args=["--disable-blink-features=AutomationControlled"]
-        )
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36"
-        )
+        browser = p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled"])
+        context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36")
         page = context.new_page()
-        
         page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
-        total_stores = len(STORES_TO_CHECK)
-        for i, (name, slug) in enumerate(STORES_TO_CHECK.items(), 1):
-            print(f"[{i}/{total_stores}] Haetaan hintoja...")
+        for i, (name, slug) in enumerate(my_stores.items(), 1):
+            print(f"[{i}/{len(my_stores)}] Robotti {bot_id} työssä...")
             data = fetch_prices_from_store(page, name, slug, SEARCH_QUERIES)
             save_to_sheet(data)
             
         browser.close()
     
-    print("\n✅ Valmis!")
+    print(f"\n✅ Robotti {bot_id} valmis!")
 
 if __name__ == "__main__":
     main()
