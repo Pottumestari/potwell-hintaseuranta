@@ -3,6 +3,7 @@ import re
 import os
 import json
 import math
+import random
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 import gspread
@@ -129,71 +130,48 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     try:
+        # STRATEGIA: Käytetään mobiilinäkymää ja URL-parametreja
         page.goto(store_url, timeout=60000, wait_until="domcontentloaded")
-        time.sleep(3) 
+        time.sleep(4) # Odotetaan latausta
+        
+        # --- DIAGNOSTIIKKA ---
+        title = page.title()
+        print(f"[Otsikko: {title}]", end=" ", flush=True)
+        
+        # Jos otsikko viittaa estoon, lopetetaan heti
+        if "Just a moment" in title or "Access denied" in title or "Challenge" in title:
+            print("\n⛔ CLOUDFLARE ESTO PÄÄLLÄ. IP-osoite estetty.", end="", flush=True)
+            return []
 
-        # --- RATKAISU: TUHOTAAN EVÄSTEIKKUNAT CSS:LLÄ ---
-        # Tämä tekee kaikista häiritsevistä elementeistä näkymättömiä.
-        # Robotin ei tarvitse painaa "Hyväksy", koska ikkunaa ei enää ole.
+        # Tuhotaan evästeet ja häiriöt
         page.add_style_tag(content="""
-            #onetrust-banner-sdk, 
-            .onetrust-pc-dark-filter, 
-            div[id^="onetrust-"],
-            .k-ruoka-cookie-consent,
-            .chat-widget,
-            iframe[title*="chat"],
-            button[aria-label="Chat"] { 
-                display: none !important; 
-                visibility: hidden !important;
-                pointer-events: none !important;
+            #onetrust-banner-sdk, .onetrust-pc-dark-filter, div[id^="onetrust-"],
+            .k-ruoka-cookie-consent, .chat-widget, iframe { 
+                display: none !important; visibility: hidden !important; 
             }
         """)
-        print("(Siivottu)", end=" ", flush=True)
 
-        # Etsitään hakukenttää tai nappia
-        search_input_sel = "input[type='search'], input[type='text'][placeholder*='Hae']"
-        search_icon_sel = "a[aria-label='Haku'], button[aria-label='Haku'], .search-toggle"
-
-        # 1. Yritetään avata haku
-        try:
-            # Tarkistetaan ensin, onko haku jo auki
-            if not page.is_visible(search_input_sel):
-                if page.locator(search_icon_sel).count() > 0:
-                    # FORCE CLICK: Käytetään JavaScriptiä klikkaamiseen (ohittaa kaikki esteet)
-                    page.locator(search_icon_sel).first.evaluate("el => el.click()")
-                    time.sleep(1)
-        except: pass
-
-        # 2. Varmistetaan että hakukenttä on käytettävissä
-        try:
-            page.wait_for_selector(search_input_sel, state="visible", timeout=8000)
-        except:
-            # JOS HAKU EI AUKEA: Kokeillaan suoraan URL-kikkaa ensimmäiselle tuotteelle
-            # Tämä paljastaa onko vika hakukentässä vai koko sivussa
-            print(f"\n❌ Hakukenttä jumissa. Kokeillaan URL-hakua...")
-            pass
-
-        # 3. Silmukka tuotteille
+        # Käydään tuotteet läpi suorilla URL-hauilla (Mobiilissa tämä on luotettavinta)
         for search_term in product_list:
             try:
-                # Jos hakukenttä on näkyvissä, käytetään sitä (nopeampi)
-                if page.is_visible(search_input_sel):
-                    page.fill(search_input_sel, search_term)
-                    time.sleep(0.1)
-                    page.keyboard.press("Enter")
-                else:
-                    # VARASUUNNITELMA: Jos hakukenttä ei aukea, mennään suoraan URL:lla
-                    # Tämä on hitaampi mutta varmempi
-                    direct_url = f"https://www.k-ruoka.fi/kauppa/{store_slug}/haku?q={search_term}"
-                    page.goto(direct_url, wait_until="domcontentloaded")
-                
-                time.sleep(2) # Odotetaan latausta
-                
+                # Rakennetaan suora URL hakuun
+                direct_url = f"https://www.k-ruoka.fi/kauppa/{store_slug}/haku?q={search_term}"
+                page.goto(direct_url, wait_until="domcontentloaded")
+                time.sleep(1.5) # Annetaan mobiilisivun ladata
+
+                # Etsitään kortit (Mobiilin selektorit voivat olla erilaisia)
                 cards = page.locator("[data-testid='product-card']").all()
                 if not cards: cards = page.locator("article").all()
+                # Mobiililayoutin fallback:
+                if not cards: cards = page.locator(".product-card").all()
                 
                 if not cards:
-                    print("x", end="", flush=True)
+                    # Tarkistetaan onko meillä "Verify" tekstiä sivulla
+                    body_text = page.locator("body").inner_text()[:200]
+                    if "Verify" in body_text or "human" in body_text:
+                        print("!", end="", flush=True) # Cloudflare iski kesken kaiken
+                    else:
+                        print("x", end="", flush=True)
                     continue
 
                 found = False 
@@ -201,10 +179,14 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
                     try:
                         text = card.inner_text()
                         lines = text.split('\n')
+                        
+                        # Mobiilinäkymässä teksti voi rivittyä eri tavalla
+                        if not lines: continue
                         name = lines[0].strip()
-                        if len(name) < 3 or name[0].isdigit() or "hinta" in name.lower():
+                        
+                        if len(name) < 3 or name[0].isdigit():
                             if len(lines) > 1: name = lines[1].strip()
-                        if "hinta" in name.lower() or name[0].isdigit(): continue
+                            
                         name_clean = clean_text(name)
                         if any(bad in name_clean.lower() for bad in EXCLUDE_KEYWORDS): continue 
                         
@@ -243,7 +225,7 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
         return []
 
 def main():
-    print("🤖 Aloitetaan Potwell Matrix-Robotti (CLOUDFIX V2)...")
+    print("🤖 Aloitetaan Potwell Matrix-Robotti (MOBILE STEALTH)...")
     
     bot_id = int(os.environ.get("BOT_ID", 1))
     total_bots = int(os.environ.get("TOTAL_BOTS", 1))
@@ -257,26 +239,26 @@ def main():
     print(f"👷 Olen robotti {bot_id}/{total_bots}. Minulle kuuluu {len(my_stores)} kauppaa.")
     
     with sync_playwright() as p:
+        # MÄÄRITETÄÄN ANDROID-PUHELIN
+        pixel_5 = p.devices['Pixel 5']
+        
         browser = p.chromium.launch(
             headless=True,
             args=[
-                "--headless=new",
+                "--headless=new", # Uusi headless-tila
                 "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--window-size=1920,1080"
+                "--no-sandbox"
             ]
         )
         
+        # Käytetään valmista mobiiliprofiilia (User-Agent, näyttökoko, kosketusnäyttö)
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            viewport={"width": 1920, "height": 1080},
+            **pixel_5,
             locale="fi-FI",
             timezone_id="Europe/Helsinki"
         )
         
         page = context.new_page()
-        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
         for i, (name, slug) in enumerate(my_stores.items(), 1):
             print(f"[{i}/{len(my_stores)}] Robotti {bot_id} työssä...")
