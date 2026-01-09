@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
 import altair as alt
 import numpy as np
 import os
 import time
 import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 # --- ASETUKSET ---
 st.set_page_config(
@@ -67,14 +68,13 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- MR. POTWELL ANIMAATIO (UUSI) ---
+# --- MR. POTWELL ANIMAATIO ---
 if "intro_shown" not in st.session_state:
     st.session_state.intro_shown = False
 
 if not st.session_state.intro_shown:
     placeholder = st.empty()
     
-    # CSS: Rakennetaan Mr. Potato osista (Hattu, Silmät, Viikset, Runko, Kengät)
     mr_potato_html = """
     <style>
         @keyframes jumpUp {
@@ -102,7 +102,6 @@ if not st.session_state.intro_shown:
             pointer-events: none;
         }
 
-        /* Hahmon rakennuspalikat */
         .mr-potato {
             position: relative;
             display: inline-block;
@@ -207,24 +206,44 @@ if not st.session_state.intro_shown:
     placeholder.empty()
     st.session_state.intro_shown = True
 
-# --- TYÖKALUT ---
-@st.cache_data(ttl=3600)
+# --- TYÖKALUT (GOOGLE SHEETS) ---
+@st.cache_data(ttl=60)
 def load_data():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    
     try:
-        conn = sqlite3.connect('hinnat.db')
-        df = pd.read_sql_query("SELECT * FROM hintatiedot", conn)
-        conn.close()
-        df['pvm'] = pd.to_datetime(df['pvm'])
-        df['hinta'] = pd.to_numeric(df['hinta'], errors='coerce')
+        # TARKISTUS: Käytetäänkö paikallista tiedostoa vai Streamlit Cloudin salaisuuksia
+        if os.path.exists("service_account.json"):
+            creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
+        else:
+            # Streamlit Cloud secrets
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            
+        client = gspread.authorize(creds)
+        # Avaa Sheet nimeltä "Potwell Data" (varmista että nimi täsmää!)
+        sheet = client.open("Potwell Data").sheet1 
+        data = sheet.get_all_records()
+        
+        df = pd.DataFrame(data)
+        
+        if not df.empty:
+            df['pvm'] = pd.to_datetime(df['pvm'])
+            # Korvataan pilkut pisteillä ja muutetaan numeroksi varmuuden vuoksi
+            df['hinta'] = df['hinta'].astype(str).str.replace(',', '.').astype(float)
+            
         return df
+        
     except Exception as e:
+        # Jos yhteys ei toimi (esim. asetukset puuttuu), palautetaan tyhjä taulu ettei kaadu
+        # st.error(f"Tietokantavirhe: {e}") # Voit poistaa kommentin debugatessa
         return pd.DataFrame()
 
 # --- DATA ---
 df = load_data()
 
 if df.empty:
-    st.warning("Ei dataa. Aja 'python price_agent.py'.")
+    st.warning("Ei dataa tai yhteys Google Sheetsiin puuttuu. Tarkista 'service_account.json' tai pilven asetukset.")
     st.stop()
 
 # --- SIVUPALKKI ---
@@ -275,22 +294,21 @@ with st.sidebar:
         default=all_stores 
     )
 
-    st.caption(f"Versio 1.6 | Data: {max_date.strftime('%d.%m.%Y')}")
+    st.caption(f"Versio 2.0 (Cloud) | Data: {max_date.strftime('%d.%m.%Y')}")
 
 # --- PÄÄNÄKYMÄ ---
 
-# Laske aika tässä 
+# Haetaan viimeisin päivitysaika suoraan datasta
 try:
-    db_mod_time = os.path.getmtime('hinnat.db')
-    update_str = datetime.datetime.fromtimestamp(db_mod_time).strftime('%d.%m.%Y klo %H:%M')
+    last_update = df['pvm'].max()
+    update_str = last_update.strftime('%d.%m.%Y')
 except:
-    update_str = ""
+    update_str = "Ei tiedossa"
 
 col1, col2 = st.columns([3, 1])
 with col1:
     st.title("Hintaseuranta")
-    # Näytetään päivitysaika heti otsikon alla vihreällä tai harmaalla
-    st.markdown(f"🗓️ *Hinnat päivitetty viimeksi: {update_str}*")
+    st.markdown(f"🗓️ *Data päivitetty viimeksi: {update_str}*")
     st.markdown(f"**Markkinakatsaus ajalle:** {start_date.strftime('%d.%m.')} - {end_date.strftime('%d.%m.%Y')}")
 
 # ==========================================
@@ -388,10 +406,6 @@ st.write("---")
 # OSA 2: HINTAMATRIISI
 # ==========================================
 
-# ==========================================
-# OSA 2: HINTAMATRIISI
-# ==========================================
-
 st.subheader("📊 Hintamatriisi (Kaikki tuotteet)")
 st.caption("Tämä taulukko näyttää uusimman hinnan kaikista tietokannan tuotteista verrattuna edelliseen mittaukseen.")
 
@@ -440,7 +454,6 @@ else:
     )
 
     # 2. Haetaan EAN-koodit erikseen ja liitetään ne matriisiin
-    # Otetaan jokaiselle tuotteelle sen viimeisin EAN-koodi
     if 'ean' in df.columns:
         ean_map = df[['tuote', 'ean']].drop_duplicates(subset=['tuote'], keep='last').set_index('tuote')
         
@@ -448,13 +461,12 @@ else:
         matrix_df = matrix_df.join(ean_map)
         
         # 3. Järjestetään sarakkeet: EAN ensin, sitten kaupat aakkosjärjestyksessä
-        # Erotetaan kauppojen nimet (kaikki muut paitsi 'ean')
         store_cols = sorted([c for c in matrix_df.columns if c != 'ean'])
         
         # Asetetaan uusi järjestys: [ean, kauppa1, kauppa2...]
         matrix_df = matrix_df[['ean'] + store_cols]
         
-        # Siistitään EAN-sarakkeen puuttuvat arvot tyhjiksi (jos on)
+        # Siistitään EAN-sarakkeen puuttuvat arvot tyhjiksi
         matrix_df['ean'] = matrix_df['ean'].fillna('')
 
     # VÄRITYSLOGIIKKA
