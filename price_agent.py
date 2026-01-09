@@ -130,102 +130,194 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     try:
-        # STRATEGIA: Käytetään mobiilinäkymää ja URL-parametreja
-        page.goto(store_url, timeout=60000, wait_until="domcontentloaded")
-        time.sleep(4) # Odotetaan latausta
+        # First, let's test if we can even access the store
+        response = page.goto(store_url, timeout=60000, wait_until="networkidle")
         
-        # --- DIAGNOSTIIKKA ---
-        title = page.title()
-        print(f"[Otsikko: {title}]", end=" ", flush=True)
+        # Debug: Check response status
+        print(f"[Status: {response.status if response else 'No response'}]", end=" ")
         
-        # Jos otsikko viittaa estoon, lopetetaan heti
-        if "Just a moment" in title or "Access denied" in title or "Challenge" in title:
-            print("\n⛔ CLOUDFLARE ESTO PÄÄLLÄ. IP-osoite estetty.", end="", flush=True)
+        # Take screenshot for debugging (optional)
+        # page.screenshot(path=f"debug_{store_slug}.png")
+        
+        # Wait for page to be more interactive
+        time.sleep(3)
+        
+        # Check for Cloudflare or blocking
+        page_content = page.content()[:2000].lower()
+        if "cloudflare" in page_content or "challenge" in page_content or "just a moment" in page_content:
+            print(f"\n⛔ Cloudflare detected on {store_name}")
             return []
-
-        # Tuhotaan evästeet ja häiriöt
-        page.add_style_tag(content="""
-            #onetrust-banner-sdk, .onetrust-pc-dark-filter, div[id^="onetrust-"],
-            .k-ruoka-cookie-consent, .chat-widget, iframe { 
-                display: none !important; visibility: hidden !important; 
-            }
-        """)
-
-        # Käydään tuotteet läpi suorilla URL-hauilla (Mobiilissa tämä on luotettavinta)
+        
+        # Try to accept cookies if present
+        try:
+            cookie_selectors = [
+                "button:has-text('Hyväksy')",
+                "button:has-text('Accept')", 
+                "button:has-text('OK')",
+                "[id*='cookie'] button",
+                "[class*='cookie'] button"
+            ]
+            
+            for selector in cookie_selectors:
+                try:
+                    cookie_btn = page.locator(selector).first
+                    if cookie_btn.is_visible(timeout=2000):
+                        cookie_btn.click()
+                        time.sleep(1)
+                        break
+                except:
+                    continue
+        except:
+            pass
+        
+        # Search for products
         for search_term in product_list:
             try:
-                # Rakennetaan suora URL hakuun
-                direct_url = f"https://www.k-ruoka.fi/kauppa/{store_slug}/haku?q={search_term}"
-                page.goto(direct_url, wait_until="domcontentloaded")
-                time.sleep(1.5) # Annetaan mobiilisivun ladata
-
-                # Etsitään kortit (Mobiilin selektorit voivat olla erilaisia)
-                cards = page.locator("[data-testid='product-card']").all()
-                if not cards: cards = page.locator("article").all()
-                # Mobiililayoutin fallback:
-                if not cards: cards = page.locator(".product-card").all()
+                # Try multiple search URL patterns
+                search_urls = [
+                    f"https://www.k-ruoka.fi/kauppa/{store_slug}/haku?search={search_term}",
+                    f"https://www.k-ruoka.fi/kauppa/{store_slug}/search?q={search_term}",
+                    f"https://www.k-ruoka.fi/kauppa/{store_slug}/tuotehaku?term={search_term}"
+                ]
                 
-                if not cards:
-                    # Tarkistetaan onko meillä "Verify" tekstiä sivulla
-                    body_text = page.locator("body").inner_text()[:200]
-                    if "Verify" in body_text or "human" in body_text:
-                        print("!", end="", flush=True) # Cloudflare iski kesken kaiken
-                    else:
-                        print("x", end="", flush=True)
-                    continue
-
-                found = False 
-                for card in cards:
+                found_product = False
+                for search_url in search_urls:
                     try:
-                        text = card.inner_text()
-                        lines = text.split('\n')
+                        page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+                        time.sleep(2)
                         
-                        # Mobiilinäkymässä teksti voi rivittyä eri tavalla
-                        if not lines: continue
-                        name = lines[0].strip()
+                        # Check for blocking
+                        current_content = page.content()[:1000].lower()
+                        if "verify" in current_content or "challenge" in current_content:
+                            print("!", end="", flush=True)
+                            break
                         
-                        if len(name) < 3 or name[0].isdigit():
-                            if len(lines) > 1: name = lines[1].strip()
+                        # Try multiple selectors for products
+                        selectors_to_try = [
+                            "[data-testid='product-card']",
+                            ".product-card",
+                            "article[class*='product']",
+                            "div[class*='product']",
+                            ".search-result-item",
+                            "li[class*='product']",
+                            ".product-item",
+                            "[class*='ProductCard']"
+                        ]
+                        
+                        for selector in selectors_to_try:
+                            try:
+                                cards = page.locator(selector)
+                                count = cards.count()
+                                if count > 0:
+                                    # Check first few items
+                                    for i in range(min(count, 3)):
+                                        try:
+                                            card = cards.nth(i)
+                                            
+                                            # Try to get product name
+                                            name = ""
+                                            name_selectors = [
+                                                "h2", "h3", "h4",
+                                                "[class*='name']",
+                                                "[class*='title']",
+                                                "[data-testid*='name']",
+                                                "[data-testid*='title']"
+                                            ]
+                                            
+                                            for name_selector in name_selectors:
+                                                try:
+                                                    name_elem = card.locator(name_selector).first
+                                                    if name_elem.count() > 0:
+                                                        name = name_elem.inner_text()
+                                                        break
+                                                except:
+                                                    continue
+                                            
+                                            if not name:
+                                                name = card.inner_text().split('\n')[0]
+                                            
+                                            name_clean = clean_text(name)
+                                            if not name_clean or len(name_clean) < 2:
+                                                continue
+                                            
+                                            # Skip excluded keywords
+                                            if any(bad in name_clean.lower() for bad in EXCLUDE_KEYWORDS):
+                                                continue
+                                            
+                                            # Try to get price
+                                            price = None
+                                            price_selectors = [
+                                                "[class*='price']",
+                                                "[data-testid*='price']",
+                                                "[class*='Price']",
+                                                ".price",
+                                                ".Price"
+                                            ]
+                                            
+                                            for price_selector in price_selectors:
+                                                try:
+                                                    price_elem = card.locator(price_selector).first
+                                                    if price_elem.count() > 0:
+                                                        price_text = price_elem.inner_text()
+                                                        price_match = re.search(r"(\d+[\.,]\d+)", price_text)
+                                                        if price_match:
+                                                            price = float(price_match.group(1).replace(',', '.'))
+                                                            break
+                                                except:
+                                                    continue
+                                            
+                                            # If no structured price found, try to extract from text
+                                            if price is None:
+                                                card_text = card.inner_text()
+                                                price_match = re.search(r"(\d+[\.,]\d+)\s*€?", card_text)
+                                                if price_match:
+                                                    price = float(price_match.group(1).replace(',', '.'))
+                                            
+                                            if price is not None:
+                                                store_results.append({
+                                                    "Pvm": current_date,
+                                                    "Kaupunki/Kauppa": store_name,
+                                                    "Hakusana": search_term,
+                                                    "Tuote": name_clean[:200],
+                                                    "Hinta (EUR)": price
+                                                })
+                                                
+                                                found_product = True
+                                                print(".", end="", flush=True)
+                                                break
+                                                
+                                        except Exception as e:
+                                            continue
+                                    
+                                    if found_product:
+                                        break
+                                        
+                            except:
+                                continue
+                        
+                        if found_product:
+                            break
                             
-                        name_clean = clean_text(name)
-                        if any(bad in name_clean.lower() for bad in EXCLUDE_KEYWORDS): continue 
-                        
-                        final_price = None
-                        try:
-                            unit_el = card.locator("[data-testid='product-unit-price']")
-                            if unit_el.count() > 0:
-                                val = unit_el.inner_text().replace('/kg', '').replace('/l', '').replace(' ', '').replace(',', '.').strip()
-                                final_price = float(val)
-                        except: pass
-                        
-                        if final_price is None:
-                            match = re.search(r"(\d+,\d+)", text)
-                            if match:
-                                pkg_price = float(match.group(1).replace(',', '.'))
-                                final_price = laske_kilohinta_nimesta(name_clean, pkg_price)
-
-                        if final_price is not None:
-                            store_results.append({
-                                "Pvm": current_date, "Kaupunki/Kauppa": store_name, 
-                                "Hakusana": search_term, "Tuote": name_clean, "Hinta (EUR)": final_price
-                            })
-                            found = True
-                            print(".", end="", flush=True) 
-                            break 
-                    except: continue
+                    except Exception as e:
+                        print("!", end="", flush=True)
+                        continue
                 
-                if not found: print("o", end="", flush=True) 
-            except: 
-                print("!", end="", flush=True) 
+                if not found_product:
+                    print("x", end="", flush=True)
+                    
+            except Exception as e:
+                print(f"! ({search_term[:8]})", end="", flush=True)
                 continue
+                
         print("") 
         return store_results
-    except Exception as e: 
-        print(f"\n⚠️ Virhe: {e}")
+        
+    except Exception as e:
+        print(f"\n⚠️ Virhe {store_name}: {str(e)[:100]}")
         return []
 
 def main():
-    print("🤖 Aloitetaan Potwell Matrix-Robotti (MOBILE STEALTH)...")
+    print("🤖 Aloitetaan Potwell Matrix-Robotti (ENHANCED STEALTH)...")
     
     bot_id = int(os.environ.get("BOT_ID", 1))
     total_bots = int(os.environ.get("TOTAL_BOTS", 1))
@@ -239,32 +331,70 @@ def main():
     print(f"👷 Olen robotti {bot_id}/{total_bots}. Minulle kuuluu {len(my_stores)} kauppaa.")
     
     with sync_playwright() as p:
-        # MÄÄRITETÄÄN ANDROID-PUHELIN
-        pixel_5 = p.devices['Pixel 5']
-        
+        # Use desktop mode instead of mobile for better compatibility
         browser = p.chromium.launch(
-            headless=True,
+            headless=True,  # Set to False for debugging
             args=[
-                "--headless=new", # Uusi headless-tila
                 "--disable-blink-features=AutomationControlled",
-                "--no-sandbox"
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-web-security",
+                "--disable-features=IsolateOrigins,site-per-process",
+                "--disable-site-isolation-trials"
             ]
         )
         
-        # Käytetään valmista mobiiliprofiilia (User-Agent, näyttökoko, kosketusnäyttö)
+        # Create desktop context with realistic settings
         context = browser.new_context(
-            **pixel_5,
+            viewport={'width': 1920, 'height': 1080},
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             locale="fi-FI",
-            timezone_id="Europe/Helsinki"
+            timezone_id="Europe/Helsinki",
+            # Add random mouse movements and other human-like behaviors
+            permissions=['geolocation'],
+            geolocation={'latitude': 60.1699, 'longitude': 24.9384},  # Helsinki coordinates
+            color_scheme='light'
         )
+        
+        # Add extra stealth measures
+        context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+            
+            window.chrome = {
+                runtime: {}
+            };
+            
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5]
+            });
+            
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['fi-FI', 'fi', 'en-US', 'en']
+            });
+        """)
         
         page = context.new_page()
         
+        # Set random viewport scroll to mimic human behavior
+        page.evaluate("""
+            window.scrollTo({
+                top: Math.random() * 500,
+                behavior: 'smooth'
+            });
+        """)
+        
         for i, (name, slug) in enumerate(my_stores.items(), 1):
-            print(f"[{i}/{len(my_stores)}] Robotti {bot_id} työssä...")
+            print(f"\n[{i}/{len(my_stores)}] Robotti {bot_id} työssä...")
             data = fetch_prices_from_store(page, name, slug, SEARCH_QUERIES)
             save_to_sheet(data)
             
+            # Add random delay between stores to avoid detection
+            if i < len(my_stores):
+                delay = random.uniform(2, 5)
+                time.sleep(delay)
+        
         browser.close()
     
     print(f"\n✅ Robotti {bot_id} valmis!")
