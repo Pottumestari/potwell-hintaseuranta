@@ -172,6 +172,8 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     try:
+        # TÄRKEÄ: Cloudflare saattaa blokata headless-selaimet herkemmin.
+        # Yritetään ladata sivu rauhassa.
         page.goto(store_url, timeout=60000)
         
         # Cloudflare / Evästeet
@@ -185,119 +187,4 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
         try:
             page.wait_for_selector("button:has-text('Hyväksy')", timeout=3000)
             page.click("button:has-text('Hyväksy')")
-        except: pass
-        
-        # Avataan haku
-        try:
-            if page.is_visible("a[aria-label='Haku']"): 
-                page.click("a[aria-label='Haku']")
-                time.sleep(1)
-        except: pass
-
-        for search_term in product_list:
-            try:
-                # 1. Tyhjennetään ja haetaan
-                search_input = "input[type='search'], input[type='text']"
-                page.click(search_input)
-                page.keyboard.press("Control+A")
-                page.keyboard.press("Backspace")
-                
-                page.fill(search_input, search_term)
-                page.keyboard.press("Enter")
-                
-                time.sleep(3) # Odotus
-                
-                # 2. Etsitään kortit
-                cards = page.locator("[data-testid='product-card']").all()
-                if not cards: cards = page.locator("article").all()
-                
-                found_for_this_ean = False 
-
-                for card in cards:
-                    try:
-                        full_text = card.inner_text()
-                        lines = full_text.split('\n')
-                        
-                        name = lines[0].strip()
-                        if len(name) < 3 or "etu" in name.lower() or "%" in name or "hinta" in name.lower() or name[0].isdigit():
-                            if len(lines) > 1: name = lines[1].strip()
-                        
-                        # Varmistus: jos nimi on yhä pelkkä hinta, ohitetaan
-                        if "hinta" in name.lower() or name[0].isdigit():
-                            continue
-                        
-                        name_clean = clean_text(name)
-                        
-                        # Tarkistetaan kieltolista
-                        if any(bad_word in name_clean.lower() for bad_word in EXCLUDE_KEYWORDS): 
-                            print(f"    ❌ Ohitettu kielletty sana: {name_clean}")
-                            continue 
-                        
-                        final_kg_price = None
-                        
-                        # Hinta HTML:stä
-                        try:
-                            unit_price_el = card.locator("[data-testid='product-unit-price']")
-                            if unit_price_el.count() > 0:
-                                raw_unit_text = unit_price_el.inner_text()
-                                clean_unit_text = raw_unit_text.replace('/kg', '').replace('/l', '').replace(' ', '').replace(',', '.').strip()
-                                final_kg_price = float(clean_unit_text)
-                        except: pass
-                        
-                        # Hinta laskemalla
-                        if final_kg_price is None:
-                            price_match = re.search(r"(\d+,\d+)", full_text)
-                            if price_match:
-                                package_price = float(price_match.group(1).replace(',', '.'))
-                                final_kg_price = laske_kilohinta_nimesta(name_clean, package_price)
-
-                        if final_kg_price is not None:
-                            store_results.append({
-                                "Pvm": current_date, 
-                                "Kaupunki/Kauppa": store_name, 
-                                "Hakusana": search_term, 
-                                "Tuote": name_clean, 
-                                "Hinta (EUR)": final_kg_price
-                            })
-                            found_for_this_ean = True
-                            break 
-                            
-                    except Exception as e: continue
-                
-                if not found_for_this_ean:
-                    print(f"    ⚠️  Ei löytynyt tuotetta haulla: {search_term}")
-
-            except Exception as e: continue
-
-        return store_results
-    except Exception as e: 
-        print(f"    Virhe kaupassa: {e}")
-        return []
-
-def main():
-    print("🤖 Aloitetaan Potwell Hintarobotti (Cloud Edition)...")
-    
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=False, 
-            slow_mo=50, 
-            args=["--disable-blink-features=AutomationControlled"]
-        )
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
-        
-        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-        
-        for name, slug in STORES_TO_CHECK.items():
-            data = fetch_prices_from_store(page, name, slug, SEARCH_QUERIES)
-            # TALLENNETAAN PILVEEN
-            save_to_sheet(data)
-            
-        browser.close()
-    
-    print("\n✅ Haku valmis! Kaikki tiedot päivitetty pilveen.")
-
-if __name__ == "__main__":
-    main()
+        except
