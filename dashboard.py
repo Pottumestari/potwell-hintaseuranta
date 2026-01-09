@@ -210,33 +210,41 @@ if not st.session_state.intro_shown:
 @st.cache_data(ttl=60)
 def load_data():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    
     try:
         # TARKISTUS: Käytetäänkö paikallista tiedostoa vai Streamlit Cloudin salaisuuksia
         if os.path.exists("service_account.json"):
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         else:
             # Streamlit Cloud secrets
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            if "gcp_service_account" in st.secrets:
+                creds_dict = dict(st.secrets["gcp_service_account"])
+                creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            else:
+                return pd.DataFrame()
             
         client = gspread.authorize(creds)
-        # Avaa Sheet nimeltä "Potwell Data" (varmista että nimi täsmää!)
         sheet = client.open("Potwell Data").sheet1 
         data = sheet.get_all_records()
         
         df = pd.DataFrame(data)
-        
         if not df.empty:
             df['pvm'] = pd.to_datetime(df['pvm'])
-            # Korvataan pilkut pisteillä ja muutetaan numeroksi varmuuden vuoksi
-            df['hinta'] = df['hinta'].astype(str).str.replace(',', '.').astype(float)
+            
+            # --- HINNAN KORJAUS ---
+            # 1. Muutetaan kaikki merkkijonoiksi ja korvataan pilkut pisteillä
+            df['hinta'] = df['hinta'].astype(str).str.replace(',', '.', regex=False)
+            
+            # 2. Muutetaan numeroiksi
+            df['hinta'] = pd.to_numeric(df['hinta'], errors='coerce')
+            
+            # 3. ÄLYKÄS KORJAUS:
+            # Jos hinta on yli 40€/kg (epärealistista perunalle/porkkanalle), 
+            # oletetaan että desimaalipilkku on kadonnut ja jaetaan 100:lla.
+            # Esim. 84.0 -> 0.84
+            df.loc[df['hinta'] > 40, 'hinta'] = df['hinta'] / 100
             
         return df
-        
     except Exception as e:
-        # Jos yhteys ei toimi (esim. asetukset puuttuu), palautetaan tyhjä taulu ettei kaadu
-        # st.error(f"Tietokantavirhe: {e}") # Voit poistaa kommentin debugatessa
         return pd.DataFrame()
 
 # --- DATA ---
@@ -487,3 +495,4 @@ else:
 
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
+
