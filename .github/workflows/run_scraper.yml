@@ -1,0 +1,31 @@
+name: Run Price Agent
+
+on:
+  schedule:
+   # Aja maanantaisin (1) ja keskiviikkoisin (3) klo 04:00 UTC 
+   # (Tämä on Suomen talviajassa klo 06:00 ja kesäajassa klo 07:00)
+    - cron: '0 6 * * 1,3'
+  workflow_dispatch: # Mahdollistaa manuaalisen käynnistyksen napista
+
+jobs:
+  scrape_and_update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Run Price Agent
+        env:
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+        run: python price_agent.py
