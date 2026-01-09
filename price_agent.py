@@ -171,6 +171,7 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     try:
+        # TÄRKEÄ: headless=True pilvessä ajamista varten. Timeout asetettu 60s.
         page.goto(store_url, timeout=60000)
         
         # Cloudflare / Evästeet
