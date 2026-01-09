@@ -74,7 +74,6 @@ def get_google_creds():
     
     # 2. Jos ei löydy, kokeillaan paikallista tiedostoa (Kotikone)
     if os.path.exists("service_account.json"):
-        # print("🏠 Käytetään paikallista service_account.json -tiedostoa.")
         return ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
     
     raise Exception("Virhe: Google-tunnuksia ei löytynyt (ei env-muuttujaa eikä tiedostoa).")
@@ -172,8 +171,6 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     try:
-        # TÄRKEÄ: Cloudflare saattaa blokata headless-selaimet herkemmin.
-        # Yritetään ladata sivu rauhassa.
         page.goto(store_url, timeout=60000)
         
         # Cloudflare / Evästeet
@@ -181,10 +178,3 @@ def fetch_prices_from_store(page, store_name, store_slug, product_list):
             time.sleep(2)
             if page.locator("text=Verify you are human").count() > 0:
                 print("    Cloudflare havaittu! Odota hetki...")
-                time.sleep(5)
-        except: pass
-
-        try:
-            page.wait_for_selector("button:has-text('Hyväksy')", timeout=3000)
-            page.click("button:has-text('Hyväksy')")
-        except
