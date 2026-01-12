@@ -157,14 +157,15 @@ if not check_password():
 #   DASHBOARD CONTENT (Only runs after login)
 # =========================================================
 
-# --- DATA LOADER ---
 @st.cache_data(ttl=60)
 def load_data():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
+        # TARKISTUS: Käytetäänkö paikallista tiedostoa vai Streamlit Cloudin salaisuuksia
         if os.path.exists("service_account.json"):
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         else:
+            # Streamlit Cloud secrets
             if "gcp_service_account" in st.secrets:
                 creds_dict = dict(st.secrets["gcp_service_account"])
                 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
@@ -178,68 +179,100 @@ def load_data():
         df = pd.DataFrame(data)
         if not df.empty:
             df['pvm'] = pd.to_datetime(df['pvm'])
+            
+            # --- HINNAN KORJAUS ---
+            # 1. Muutetaan kaikki merkkijonoiksi ja korvataan pilkut pisteillä
             df['hinta'] = df['hinta'].astype(str).str.replace(',', '.', regex=False)
+            
+            # 2. Muutetaan numeroiksi
             df['hinta'] = pd.to_numeric(df['hinta'], errors='coerce')
+            
+            # 3. ÄLYKÄS KORJAUS:
+            # Jos hinta on yli 40€/kg (epärealistista perunalle/porkkanalle), 
+            # oletetaan että desimaalipilkku on kadonnut ja jaetaan 100:lla.
+            # Esim. 84.0 -> 0.84
             df.loc[df['hinta'] > 40, 'hinta'] = df['hinta'] / 100
             
         return df
     except Exception as e:
         return pd.DataFrame()
 
+# --- DATA ---
 df = load_data()
 
 if df.empty:
-    st.warning("⚠️ Connection established, but data stream is empty. Check source.")
+    st.warning("Ei dataa tai yhteys Google Sheetsiin puuttuu. Tarkista 'service_account.json' tai pilven asetukset.")
     st.stop()
 
-# --- SIDEBAR ---
+# --- SIVUPALKKI ---
 with st.sidebar:
-    st.markdown("### 🎛 CONTROL PANEL")
+    if os.path.exists("potwell_logo_rgb_mv.jpg"):
+        st.image("potwell_logo_rgb_mv.jpg")
+    else:
+        st.header("🥔 Valinnat")
+    
     st.write("---")
     
+    # 1. Aikaväli
     if not df['pvm'].isnull().all():
         min_date = df['pvm'].min().date()
         max_date = df['pvm'].max().date()
         
+        st.subheader("📅 Aikaväli")
         start_date, end_date = st.date_input(
-            "Time Horizon",
+            "Valitse tarkastelujakso",
             [min_date, max_date],
             min_value=min_date,
             max_value=max_date
         )
+        
         mask = (df['pvm'].dt.date >= start_date) & (df['pvm'].dt.date <= end_date)
         df_filtered_time = df[mask].copy()
     else:
+        st.error("Päivämäärätiedot puuttuvat tai ovat virheellisiä.")
         st.stop()
     
     st.write("---")
-    
+
+    # 2. Tuotteet
+    st.subheader("📦 Tuotteet")
     all_products = sorted(df['tuote'].unique())
     selected_products = st.multiselect(
-        "Product Filter", 
+        "Valitse analysoitavat tuotteet", 
         all_products, 
         default=[all_products[0]] if len(all_products) > 0 else []
     )
     
+    # 3. Kaupat
+    st.subheader("🏪 Kaupat (Graafi)")
     all_stores = sorted(df['kauppa'].unique())
     selected_stores_graph = st.multiselect(
-        "Store Filter",
+        "Valitse kaupat graafiin",
         all_stores,
         default=all_stores 
     )
 
-# --- MAIN DASHBOARD ---
+    st.caption(f"Versio 2.0 (Cloud) | Data: {max_date.strftime('%d.%m.%Y')}")
+
+# --- PÄÄNÄKYMÄ ---
+
+# Haetaan viimeisin päivitysaika suoraan datasta
 try:
-    last_update = df['pvm'].max().strftime('%d.%m.%Y')
+    last_update = df['pvm'].max()
+    update_str = last_update.strftime('%d.%m.%Y')
 except:
-    last_update = "N/A"
+    update_str = "Ei tiedossa"
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    st.title("MARKET INTELLIGENCE")
-    st.caption(f"LIVE DATA STREAM | UPDATED: {last_update}")
+    st.title("Hintaseuranta")
+    st.markdown(f"🗓️ *Data päivitetty viimeksi: {update_str}*")
+    st.markdown(f"**Markkinakatsaus ajalle:** {start_date.strftime('%d.%m.')} - {end_date.strftime('%d.%m.%Y')}")
 
-# --- METRICS & CHART ---
+# ==========================================
+# OSA 1: KPI & GRAAFI
+# ==========================================
+
 if not df_filtered_time.empty and selected_products and selected_stores_graph:
     
     graph_df = df_filtered_time[
@@ -248,42 +281,96 @@ if not df_filtered_time.empty and selected_products and selected_stores_graph:
     ].copy()
 
     if not graph_df.empty:
+        # KPI LASKENTA
         latest_avg = graph_df[graph_df['pvm'] == graph_df['pvm'].max()]['hinta'].mean()
-        min_price = graph_df['hinta'].min()
-        max_price = graph_df['hinta'].max()
+        
+        dates = sorted(graph_df['pvm'].unique())
+        if len(dates) > 1:
+            prev_date_graph = dates[-2]
+            prev_avg = graph_df[graph_df['pvm'] == prev_date_graph]['hinta'].mean()
+            delta = latest_avg - prev_avg
+        else:
+            delta = 0
 
         kpi1, kpi2, kpi3 = st.columns(3)
-        with kpi1: st.metric("Average Price", f"{latest_avg:.2f} €")
-        with kpi2: st.metric("Lowest Detected", f"{min_price:.2f} €")
-        with kpi3: st.metric("Highest Detected", f"{max_price:.2f} €")
+        with kpi1:
+            st.metric("Keskihinta (Valitut)", f"{latest_avg:.2f} €", f"{delta:.2f} €", delta_color="inverse")
+        with kpi2:
+            min_price = graph_df['hinta'].min()
+            st.metric("Jakson alin hinta", f"{min_price:.2f} €")
+        with kpi3:
+            max_price = graph_df['hinta'].max()
+            st.metric("Jakson ylin hinta", f"{max_price:.2f} €")
         
         st.markdown("###")
 
-        # ALTAIR CHART (Dark Mode Optimized)
-        stats_df = graph_df.groupby(['pvm', 'tuote'])['hinta'].mean().reset_index()
+        # GRAAFI
+        stats_df = graph_df.groupby(['pvm', 'tuote'])['hinta'].agg(
+            Keskiarvo='mean',
+            Minimi='min',
+            Maksimi='max'
+        ).reset_index()
 
-        base = alt.Chart(stats_df).encode(
-            x=alt.X('pvm:T', axis=alt.Axis(format='%d.%m', title=None, domainColor='#444', tickColor='#444', labelColor='#aaa')),
-            y=alt.Y('hinta:Q', title=None, axis=alt.Axis(gridColor='#333', domainColor='#444', labelColor='#aaa')),
-            color=alt.Color('tuote:N', legend=alt.Legend(title=None, labelColor='#aaa')),
-            tooltip=['pvm', 'tuote', 'hinta']
+        melted_df = stats_df.melt(['pvm', 'tuote'], var_name='Mittari', value_name='Hinta')
+
+        base = alt.Chart(melted_df).encode(
+            x=alt.X('pvm:T', axis=alt.Axis(format='%d.%m.', title=None, grid=False, tickCount=10)),
+            y=alt.Y('Hinta:Q', title='Hinta (€)', scale=alt.Scale(zero=False, padding=0.5), axis=alt.Axis(grid=True, gridDash=[2,2], gridColor='#eee')),
+            color=alt.Color('tuote:N', title='Tuote'),
+            tooltip=['pvm', 'tuote', 'Mittari', alt.Tooltip('Hinta', format='.2f')]
         )
 
-        chart = base.mark_line(strokeWidth=3).properties(
+        lines = base.mark_line(strokeWidth=3).encode(
+            strokeDash=alt.StrokeDash('Mittari', legend=alt.Legend(title='Tieto'))
+        )
+        
+        points = base.mark_circle(size=80, opacity=1, stroke='white', strokeWidth=1.5).encode(
+            shape=alt.Shape('Mittari') 
+        )
+
+        chart = (lines + points).properties(
             height=400,
-            background='transparent' # Allows global dark theme to show through
+            title=alt.TitleParams("Hintakehitys", anchor='start', fontSize=18, color='#555')
         ).configure_view(
             strokeWidth=0
         ).interactive()
 
-        st.altair_chart(chart, use_container_width=True)
+        with st.container():
+            st.altair_chart(chart, use_container_width=True)
+
+        with st.expander("📋 Tarkastele graafin dataa taulukkona"):
+            display_stats = stats_df.copy()
+            display_stats.columns = ['Päivämäärä', 'Tuote', 'Keskiarvo (€)', 'Minimi (€)', 'Maksimi (€)']
+            
+            st.dataframe(
+                display_stats, 
+                use_container_width=True,
+                column_config={
+                    "Päivämäärä": st.column_config.DateColumn("Päivämäärä", format="DD.MM.YYYY"),
+                    "Keskiarvo (€)": st.column_config.NumberColumn(format="%.2f €"),
+                    "Minimi (€)": st.column_config.NumberColumn(format="%.2f €"),
+                    "Maksimi (€)": st.column_config.NumberColumn(format="%.2f €"),
+                }
+            )
+
     else:
-        st.info("No data for selected criteria.")
+        st.info("Valitse vasemmalta tuotteet ja kaupat nähdäksesi kuvaajan.")
+else:
+    st.info("Tarkista valinnat sivupalkista.")
 
-# --- MATRIX TABLE ---
-st.subheader("PRICE MATRIX")
+st.write("---")
 
-if not df.empty:
+# ==========================================
+# OSA 2: HINTAMATRIISI
+# ==========================================
+
+st.subheader("📊 Hintamatriisi")
+st.caption("Taulukko on ryhmitelty kauppaketjun mukaan: K-Citymarket ➝ K-Supermarket ➝ K-Market.")
+
+if df.empty:
+    st.write("Ei dataa matriisille.")
+else:
+    # --- 1. DATAN VALMISTELU ---
     sorted_dates = sorted(df['pvm'].unique(), reverse=True)
     latest_date = sorted_dates[0]
     previous_date = sorted_dates[1] if len(sorted_dates) > 1 else None
@@ -299,41 +386,77 @@ if not df.empty:
         merged_df = latest_df
         merged_df['price_prev'] = np.nan
 
+    # --- 2. HINTASOLUJEN MUOTOILU ---
     def format_price_cell(row):
         price = row['price_now']
         prev = row['price_prev']
         if pd.isna(price): return None
+        
+        price_str = f"{price:.2f} €"
+        
         arrow = ""
         if pd.notna(prev):
             if price > prev: arrow = " ▲"
             elif price < prev: arrow = " ▼"
-        return f"{price:.2f} €{arrow}"
+            elif price == prev: arrow = " ➖"
+            
+        return f"{price_str}{arrow}"
 
     merged_df['formatted_cell'] = merged_df.apply(format_price_cell, axis=1)
 
-    # Simplified Chain Logic for display
-    def detect_chain(s):
-        if "KM " in s: return "K-Market"
-        if "SM " in s: return "K-Supermarket"
-        return "K-Citymarket"
+    # --- 3. KAUPPOJEN RYHMITTELY (KETJUT) ---
+    def detect_chain(store_name):
+        # Logiikka: Jos nimessä on SM -> Supermarket, KM -> Market, muuten oletetaan Citymarket
+        if "KM " in store_name: return "3. K-Market"
+        if "SM " in store_name: return "2. K-Supermarket"
+        # Oletus: Isot kaupat (esim. "Espoo (Iso Omena)") ovat Citymarketeja
+        return "1. K-Citymarket"
 
-    merged_df['Chain'] = merged_df['kauppa'].apply(detect_chain)
+    merged_df['Ketju'] = merged_df['kauppa'].apply(detect_chain)
 
+    # --- 4. MATRIISIN LUONTI (MULTI-INDEX) ---
+    # Luodaan matriisi, jossa sarakkeilla on kaksi tasoa: [Ketju, Kauppa]
     matrix_df = merged_df.pivot_table(
         index='tuote',
-        columns=['Chain', 'kauppa'],
+        columns=['Ketju', 'kauppa'],
         values='formatted_cell',
         aggfunc='first'
     )
 
-    # Styling for Dark Mode
-    def style_matrix(val):
+    # --- 5. EAN-SARAKKEEN LISÄYS ---
+    if 'ean' in df.columns:
+        # Haetaan EANit
+        ean_map = df[['tuote', 'ean']].drop_duplicates(subset=['tuote'], keep='last').set_index('tuote')
+        
+        # Jotta EAN sopii MultiIndex-taulukkoon, sille pitää antaa myös "yläotsikko"
+        # Käytetään yläotsikkona " Tuotetiedot" (välilyönti alussa varmistaa että se on eka)
+        ean_header = pd.MultiIndex.from_tuples([(" Tuotetiedot", "EAN")]) 
+        ean_df = pd.DataFrame(ean_map['ean'], index=matrix_df.index)
+        ean_df.columns = ean_header
+        
+        # Yhdistetään EAN + Matriisi
+        final_df = pd.concat([ean_df, matrix_df], axis=1)
+        
+        # Siistitään NaN-arvot tyhjiksi stringeiksi EAN-sarakkeessa
+        final_df[(" Tuotetiedot", "EAN")] = final_df[(" Tuotetiedot", "EAN")].fillna('')
+    else:
+        final_df = matrix_df
+
+    # --- 6. VÄRITYSLOGIIKKA JA NÄYTTÖ ---
+    def color_arrows(val):
         if isinstance(val, str):
-            if "▲" in val: return "color: #ff4b4b; font-weight: bold;" # Red for increase
-            if "▼" in val: return "color: #00d4ff; font-weight: bold;" # Cyan for decrease
-        return "color: #ddd;"
+            if "▲" in val:
+                return "color: #28a745; font-weight: bold;"  # Vihreä
+            elif "▼" in val:
+                return "color: #dc3545; font-weight: bold;"  # Punainen
+        return ""
 
-    st.dataframe(matrix_df.style.map(style_matrix), use_container_width=True, height=600)
+    # Näytetään taulukko
+    st.dataframe(
+        final_df.style.map(color_arrows), 
+        use_container_width=True, 
+        height=800
+    )
 
-if st.button('REFRESH DATA'):
+if st.button('🔄 Päivitä tiedot'):
     st.rerun()
