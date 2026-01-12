@@ -10,181 +10,143 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # --- CONFIGURATION ---
 st.set_page_config(
-    page_title="Potwell Intelligence",
+    page_title="Potwell Hintaseuranta",
     page_icon="🥔",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- MODERN DARK THEME & ANIMATION CSS ---
+# --- GLOBAL STYLES (Dark Theme Base) ---
 st.markdown("""
     <style>
-    /* GLOBAL DARK THEME */
     .stApp {
-        background: radial-gradient(circle at 10% 20%, rgb(30, 30, 35) 0%, rgb(10, 10, 15) 90%);
+        background: radial-gradient(circle at 50% 10%, rgb(25, 25, 30) 0%, rgb(5, 5, 5) 100%);
         color: #e0e0e0;
     }
     
-    /* LOGIN CARD CONTAINER */
-    .login-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 70vh;
-        flex-direction: column;
-    }
-    
-    .glass-card {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(15px);
-        -webkit-backdrop-filter: blur(15px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 50px;
-        border-radius: 20px;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-        width: 100%;
-        max-width: 450px;
-        text-align: center;
-    }
-
-    /* INPUT FIELDS */
+    /* INPUT FIELDS STYLING */
     div[data-testid="stTextInput"] input {
-        background-color: rgba(255, 255, 255, 0.07) !important;
+        background-color: rgba(255, 255, 255, 0.05) !important;
         color: white !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-radius: 8px !important;
+        padding: 10px !important;
     }
     div[data-testid="stTextInput"] input:focus {
         border-color: #00d4ff !important;
-        box-shadow: 0 0 10px rgba(0, 212, 255, 0.3) !important;
-    }
-    div[data-testid="stTextInput"] label {
-        color: #aaaaaa !important;
-    }
-
-    /* METRICS & CARDS IN DASHBOARD */
-    div[data-testid="stMetric"] {
-        background-color: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: white;
-    }
-    div[data-testid="stMetricLabel"] {
-        color: #bbbbbb !important;
-    }
-    
-    /* ANIMATION: LOCK OPENING */
-    .lock-container {
-        position: relative;
-        width: 80px;
-        height: 80px;
-        margin: 0 auto 20px auto;
-    }
-    
-    .lock-body {
-        width: 50px;
-        height: 40px;
-        background: #e0e0e0;
-        position: absolute;
-        bottom: 0;
-        left: 50%;
-        transform: translateX(-50%);
-        border-radius: 5px;
-        transition: background 0.5s ease;
-    }
-    
-    .lock-shackle {
-        width: 30px;
-        height: 40px;
-        border: 5px solid #e0e0e0;
-        border-bottom: 0;
-        border-radius: 15px 15px 0 0;
-        position: absolute;
-        top: 5px;
-        left: 50%;
-        transform: translateX(-50%);
-        transition: transform 0.5s ease, border-color 0.5s ease;
-        transform-origin: 100% 100%;
-    }
-    
-    /* SUCCESS STATE */
-    .unlocked .lock-shackle {
-        transform: translateX(-50%) rotateY(180deg) translateX(15px);
-        border-color: #00d4ff;
-    }
-    .unlocked .lock-body {
-        background: #00d4ff;
-        box-shadow: 0 0 20px rgba(0, 212, 255, 0.6);
-    }
-    
-    .success-text {
-        color: #00d4ff;
-        font-family: 'Courier New', monospace;
-        letter-spacing: 2px;
-        margin-top: 15px;
-        font-size: 1.2rem;
-        opacity: 0;
-        animation: fadeIn 0.5s forwards 0.5s;
-    }
-
-    @keyframes fadeIn {
-        to { opacity: 1; }
+        box-shadow: 0 0 10px rgba(0, 212, 255, 0.2) !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- AUTHENTICATION WITH NEW ANIMATION ---
+# --- AUTHENTICATION LOGIC ---
 def check_password():
     CORRECT_PASSWORD = "Potwell25!"
 
-    # Initialize Session State
     if "password_correct" not in st.session_state:
         st.session_state.password_correct = False
     if "login_success_anim" not in st.session_state:
         st.session_state.login_success_anim = False
 
-    # If already logged in, return True
     if st.session_state.password_correct:
         return True
 
-    # CONTAINER FOR LOGIN UI
-    placeholder = st.empty()
+    # --- LOGIN SCREEN CSS (Only active when logged out) ---
+    st.markdown("""
+        <style>
+        /* Hide Sidebar on Login */
+        [data-testid="stSidebar"] { display: none; }
+        
+        /* CENTER THE LOGIN CARD */
+        div.block-container {
+            max-width: 500px;
+            padding: 60px 40px;
+            margin: auto;
+            margin-top: 10vh;
+            
+            /* GLASS EFFECT */
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Typography Alignment */
+        h2 { text-align: center; font-weight: 300; letter-spacing: 2px; font-size: 28px; margin-bottom: 0px; }
+        p { text-align: center; color: #666; font-size: 12px; margin-top: -10px; margin-bottom: 40px; }
+        
+        /* Button Styling */
+        div.stButton > button {
+            width: 100%;
+            background-color: #00d4ff !important;
+            color: #000 !important;
+            border: none;
+            font-weight: bold;
+            letter-spacing: 1px;
+            padding: 12px;
+            transition: all 0.3s ease;
+        }
+        div.stButton > button:hover {
+            box-shadow: 0 0 15px #00d4ff;
+            transform: scale(1.02);
+        }
+        
+        /* LOCK ANIMATION STYLES */
+        .lock-container { position: relative; width: 60px; height: 60px; margin: 0 auto 30px auto; }
+        .lock-body {
+            width: 40px; height: 30px; background: #444; position: absolute; bottom: 0; left: 50%; 
+            transform: translateX(-50%); border-radius: 4px; transition: background 0.5s ease;
+        }
+        .lock-shackle {
+            width: 24px; height: 30px; border: 4px solid #444; border-bottom: 0; border-radius: 15px 15px 0 0;
+            position: absolute; top: 2px; left: 50%; transform: translateX(-50%); 
+            transition: transform 0.5s ease, border-color 0.5s ease; transform-origin: 100% 100%;
+        }
+        
+        /* Unlocked State */
+        .unlocked .lock-shackle { transform: translateX(-50%) rotateY(180deg) translateX(15px); border-color: #00d4ff; }
+        .unlocked .lock-body { background: #00d4ff; box-shadow: 0 0 20px rgba(0, 212, 255, 0.6); }
+        .success-msg { text-align: center; color: #00d4ff; font-family: monospace; letter-spacing: 2px; margin-top: 20px; }
+        </style>
+    """, unsafe_allow_html=True)
 
-    with placeholder.container():
-        st.markdown('<div class="login-container"><div class="glass-card">', unsafe_allow_html=True)
-        
-        st.markdown("## POTWELL INTELLIGENCE")
-        st.markdown("<p style='color: #888; font-size: 0.9rem;'>Restricted Access Area</p>", unsafe_allow_html=True)
-        
-        # Determine visual state (Locked vs Unlocked)
-        lock_class = "unlocked" if st.session_state.login_success_anim else ""
-        
-        # HTML for Lock Animation
-        st.markdown(f"""
-            <div class="lock-container {lock_class}">
-                <div class="lock-shackle"></div>
-                <div class="lock-body"></div>
-            </div>
-        """, unsafe_allow_html=True)
+    # --- LOGIN CONTENT ---
+    
+    # 1. Title & Subtitle
+    st.markdown("## POTWELL HINTASEURANTA")
+    st.markdown("<p>Restricted Access Area</p>", unsafe_allow_html=True)
 
-        # Show Login Form if not yet successful
-        if not st.session_state.login_success_anim:
-            password = st.text_input("ENTER PASSKEY", type="password", key="login_pass")
+    # 2. Lock Animation Container
+    lock_state = "unlocked" if st.session_state.login_success_anim else ""
+    st.markdown(f"""
+        <div class="lock-container {lock_state}">
+            <div class="lock-shackle"></div>
+            <div class="lock-body"></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # 3. Input & Interaction
+    if not st.session_state.login_success_anim:
+        # Create a placeholder to clear the form after success
+        form_placeholder = st.empty()
+        
+        with form_placeholder.container():
+            password = st.text_input("SALASANA", type="password", key="login_pass", label_visibility="collapsed", placeholder="SALASANA")
             
             if st.button("AUTHENTICATE"):
                 if password == CORRECT_PASSWORD:
                     st.session_state.login_success_anim = True
-                    st.rerun()  # Rerun to trigger animation state
+                    st.rerun()
                 else:
-                    st.error("ACCESS DENIED")
-        else:
-            # Success State Display
-            st.markdown('<div class="success-text">ACCESS GRANTED</div>', unsafe_allow_html=True)
-            st.markdown('</div></div>', unsafe_allow_html=True) # Close divs
-            time.sleep(2.5) # Wait for animation
-            st.session_state.password_correct = True
-            st.rerun()
-
-        st.markdown('</div></div>', unsafe_allow_html=True) # Close divs if loop didn't break
+                    st.error("VÄÄRÄ SALASANA, SYÖTÄ OIKEA SALASANA")
+    else:
+        # 4. Success Message
+        st.markdown('<div class="success-msg">SALASANA OIKEIN</div>', unsafe_allow_html=True)
+        time.sleep(2)
+        st.session_state.password_correct = True
+        st.rerun()
 
     return False
 
