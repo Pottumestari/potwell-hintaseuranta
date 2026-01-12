@@ -124,12 +124,13 @@ def check_password():
         return True
 
     # --- LOGIN SCREEN CSS (Only active when logged out) ---
+    # --- LOGIN SCREEN CSS (Only active when logged out) ---
     st.markdown("""
     <style>
     /* Hide Sidebar on Login */
     [data-testid="stSidebar"] { display: none; }
 
-    /* Target the real main block-container in newer Streamlit */
+    /* Card centered */
     div[data-testid="stAppViewContainer"] .main .block-container {
         max-width: 520px !important;
         padding: 60px 44px !important;
@@ -147,34 +148,42 @@ def check_password():
     h2 { text-align: center; font-weight: 600; letter-spacing: 2px; font-size: 28px; margin-bottom: 0px; color: #e5e7eb; }
     p  { text-align: center; color: #9ca3af; font-size: 12px; margin-top: -10px; margin-bottom: 40px; }
 
-    /* ---- Password input: style the OUTER container, not only input ---- */
-    div[data-testid="stTextInput"] { max-width: 420px; margin: 0 auto; }
-    div[data-testid="stTextInput"] > div {
+    /* Make the whole login form exactly same width as input (this guarantees perfect centering) */
+    div[data-testid="stForm"]{
+        max-width: 420px !important;
+        margin: 0 auto !important;
+    }
+
+    /* Password field container */
+    div[data-testid="stForm"] div[data-testid="stTextInput"] { width: 100% !important; }
+    div[data-testid="stForm"] div[data-testid="stTextInput"] > div {
         border: 1px solid rgba(255,255,255,0.14) !important;
         border-radius: 12px !important;
         background: rgba(255,255,255,0.06) !important;
         padding: 2px !important;
     }
 
-    /* Remove inner borders so we don't get double outlines */
-    div[data-testid="stTextInput"] input {
+    /* Input itself */
+    div[data-testid="stForm"] div[data-testid="stTextInput"] input {
         border: none !important;
         outline: none !important;
         background: transparent !important;
         color: #e5e7eb !important;
         padding: 12px 12px !important;
     }
-    div[data-testid="stTextInput"] input:focus { box-shadow: none !important; }
-
-    /* Focus ring on the container (single clean border) */
-    div[data-testid="stTextInput"]:focus-within > div {
+    div[data-testid="stForm"] div[data-testid="stTextInput"]:focus-within > div {
         border-color: rgba(14, 165, 183, 0.9) !important;
         box-shadow: 0 0 12px rgba(14, 165, 183, 0.22) !important;
     }
 
-    /* Button styling (NOT full width) */
-    div.stButton > button {
-        width: auto !important;
+    /* Button perfectly centered under the input (same 420px parent, flex center) */
+    div[data-testid="stForm"] div.stButton {
+        display: flex !important;
+        justify-content: center !important;
+        margin-top: 14px !important;
+    }
+    div[data-testid="stForm"] div.stButton > button {
+        width: auto !important;            /* not full width */
         min-width: 180px !important;
         padding: 12px 22px !important;
         border-radius: 12px !important;
@@ -185,18 +194,9 @@ def check_password():
         color: #061018 !important;
         transition: transform 0.15s ease, box-shadow 0.15s ease !important;
     }
-    div.stButton > button:hover {
+    div[data-testid="stForm"] div.stButton > button:hover {
         box-shadow: 0 10px 25px rgba(14, 165, 183, 0.25) !important;
         transform: translateY(-1px) scale(1.01);
-    }
-    /* Center the submit button inside the form */
-    div[data-testid="stForm"] div.stButton {
-    display: flex;
-    justify-content: center;
-    }
-    /* Keep button not full-width */
-   div[data-testid="stForm"] div.stButton > button {
-    width: auto !important;
     }
 
     /* LOCK */
@@ -237,6 +237,7 @@ def check_password():
     .status-error { color: #ef4444; }
     </style>
     """, unsafe_allow_html=True)
+
 
     # --- LOGIN CONTENT ---
     st.markdown("## POTWELL HINTASEURANTA")
@@ -594,6 +595,7 @@ else:
 
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
+
 
 
 
