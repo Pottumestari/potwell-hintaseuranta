@@ -580,3 +580,4 @@ else:
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
 
+
