@@ -4,163 +4,38 @@ import altair as alt
 import numpy as np
 import os
 import time
+import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- CONFIGURATION ---
 st.set_page_config(
-    page_title="Potwell Hintaseuranta",
+    page_title="Potwell Intelligence",
     page_icon="🥔",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- GLOBAL STYLES & ANIMATIONS ---
+# --- GLOBAL STYLES (Dark Theme Base) ---
 st.markdown("""
     <style>
-    /* 1. GLOBAL DARK THEME BACKGROUND */
     .stApp {
-        background: radial-gradient(circle at 50% 10%, rgb(20, 20, 25) 0%, rgb(0, 0, 0) 100%);
+        background: radial-gradient(circle at 50% 10%, rgb(25, 25, 30) 0%, rgb(5, 5, 5) 100%);
         color: #e0e0e0;
     }
-
-    /* 2. INPUT FIELD STYLING */
-    /* Remove default borders and make it blend with the card */
+    
+    /* INPUT FIELDS STYLING */
     div[data-testid="stTextInput"] input {
-        background-color: rgba(255, 255, 255, 0.07) !important;
+        background-color: rgba(255, 255, 255, 0.05) !important;
         color: white !important;
-        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-radius: 8px !important;
-        padding: 12px !important;
-        text-align: center; 
+        padding: 10px !important;
     }
     div[data-testid="stTextInput"] input:focus {
         border-color: #00d4ff !important;
-        box-shadow: 0 0 15px rgba(0, 212, 255, 0.2) !important;
+        box-shadow: 0 0 10px rgba(0, 212, 255, 0.2) !important;
     }
-    
-    /* 3. BUTTON STYLING (Centered) */
-    div.stButton {
-        display: flex;
-        justify-content: center; /* This centers the button element */
-    }
-    div.stButton > button {
-        background: linear-gradient(135deg, #2c3e50 0%, #4ca1af 100%) !important; /* Professional Steel/Blue Gradient */
-        color: white !important;
-        border: none !important;
-        padding: 12px 50px !important;
-        border-radius: 8px !important;
-        font-weight: 600 !important;
-        letter-spacing: 1.5px !important;
-        transition: transform 0.2s, box-shadow 0.2s !important;
-        margin-top: 10px !important;
-    }
-    div.stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(76, 161, 175, 0.4);
-    }
-    div.stButton > button:active {
-        transform: translateY(0px);
-    }
-
-    /* 4. LOGIN CARD CONTAINER (Visual Background) */
-    .login-card-bg {
-        padding: 40px;
-        background: rgba(255, 255, 255, 0.03);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 20px;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
-        text-align: center;
-        margin-bottom: 20px;
-    }
-    
-    /* 5. LOCK ANIMATIONS */
-    @keyframes shake {
-        0% { transform: translateX(0); }
-        25% { transform: translateX(-8px); }
-        50% { transform: translateX(8px); }
-        75% { transform: translateX(-8px); }
-        100% { transform: translateX(0); }
-    }
-    
-    .lock-icon-wrapper {
-        display: flex;
-        justify-content: center;
-        margin-bottom: 20px;
-    }
-    
-    .lock-container {
-        position: relative;
-        width: 50px;
-        height: 60px;
-        transition: all 0.3s ease;
-    }
-    
-    .lock-body {
-        width: 40px;
-        height: 32px;
-        background: #00d4ff; /* Default Blue */
-        position: absolute;
-        bottom: 0;
-        left: 50%;
-        transform: translateX(-50%);
-        border-radius: 6px;
-        transition: background-color 0.3s ease;
-    }
-    
-    .lock-shackle {
-        width: 24px;
-        height: 28px;
-        border: 4px solid #00d4ff; /* Default Blue */
-        border-bottom: 0;
-        border-radius: 15px 15px 0 0;
-        position: absolute;
-        top: 2px;
-        left: 50%;
-        transform: translateX(-50%);
-        transition: border-color 0.3s ease;
-    }
-
-    /* ERROR STATE */
-    .shake-anim {
-        animation: shake 0.4s ease-in-out;
-    }
-    .error-lock .lock-body { background-color: #ff4b4b !important; }
-    .error-lock .lock-shackle { border-color: #ff4b4b !important; }
-    
-    .error-text {
-        color: #ff4b4b;
-        font-family: 'Segoe UI', sans-serif;
-        font-size: 13px;
-        font-weight: 600;
-        letter-spacing: 1px;
-        margin-top: 15px;
-        animation: fadeIn 0.5s;
-        text-transform: uppercase;
-    }
-
-    /* TYPOGRAPHY */
-    h2.login-title { 
-        font-weight: 300; 
-        letter-spacing: 3px; 
-        font-size: 24px; 
-        color: white;
-        margin: 0;
-        padding-bottom: 5px;
-    }
-    p.login-subtitle { 
-        color: #666; 
-        font-size: 11px; 
-        text-transform: uppercase; 
-        letter-spacing: 2px;
-        margin-bottom: 30px;
-    }
-    
-    /* HIDE SIDEBAR ON LOGIN */
-    [data-testid="stSidebar"] { display: none; }
-
     </style>
 """, unsafe_allow_html=True)
 
@@ -170,77 +45,117 @@ def check_password():
 
     if "password_correct" not in st.session_state:
         st.session_state.password_correct = False
-    if "login_failed" not in st.session_state:
-        st.session_state.login_failed = False
+    if "login_success_anim" not in st.session_state:
+        st.session_state.login_success_anim = False
 
     if st.session_state.password_correct:
         return True
 
-    # --- RENDER LOGIN UI ---
-    
-    # Creates 3 columns: Left spacer, Center Card (narrow), Right spacer
-    col1, col2, col3 = st.columns([1, 2, 1]) 
-    
-    # We put everything inside the middle column to "box" it in
-    with col2:
-        # Start Card Container
-        st.markdown('<div class="login-card-bg">', unsafe_allow_html=True)
+    # --- LOGIN SCREEN CSS (Only active when logged out) ---
+    st.markdown("""
+        <style>
+        /* Hide Sidebar on Login */
+        [data-testid="stSidebar"] { display: none; }
         
-        st.markdown('<h2 class="login-title">POTWELL INTELLIGENCE</h2>', unsafe_allow_html=True)
-        st.markdown('<p class="login-subtitle">Restricted Access Area</p>', unsafe_allow_html=True)
-
-        # Logic for Error State
-        lock_class = ""
-        error_msg = ""
-        
-        if st.session_state.login_failed:
-            lock_class = "error-lock shake-anim"
-            error_msg = '<div class="error-text">VÄÄRÄ SALASANA</div>'
-
-        # Lock Icon
-        st.markdown(f"""
-            <div class="lock-icon-wrapper">
-                <div class="lock-container {lock_class}">
-                    <div class="lock-shackle"></div>
-                    <div class="lock-body"></div>
-                </div>
-            </div>
-            {error_msg}
-        """, unsafe_allow_html=True)
-        
-        # End Card Container Background (Visual only)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # WIDGETS (Inputs must be outside the HTML div to work in Streamlit, 
-        # but they are inside 'col2' so they stay narrow)
-        
-        # Use a form to allow "Enter" key submission
-        with st.form("login_form"):
-            password = st.text_input("SALASANA", type="password", label_visibility="collapsed", placeholder="Syötä salasana")
-            submit = st.form_submit_button("KIRJAUDU")
+        /* CENTER THE LOGIN CARD */
+        div.block-container {
+            max-width: 500px;
+            padding: 60px 40px;
+            margin: auto;
+            margin-top: 10vh;
             
-            if submit:
+            /* GLASS EFFECT */
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Typography Alignment */
+        h2 { text-align: center; font-weight: 300; letter-spacing: 2px; font-size: 28px; margin-bottom: 0px; }
+        p { text-align: center; color: #666; font-size: 12px; margin-top: -10px; margin-bottom: 40px; }
+        
+        /* Button Styling */
+        div.stButton > button {
+            width: 100%;
+            background-color: #00d4ff !important;
+            color: #000 !important;
+            border: none;
+            font-weight: bold;
+            letter-spacing: 1px;
+            padding: 12px;
+            transition: all 0.3s ease;
+        }
+        div.stButton > button:hover {
+            box-shadow: 0 0 15px #00d4ff;
+            transform: scale(1.02);
+        }
+        
+        /* LOCK ANIMATION STYLES */
+        .lock-container { position: relative; width: 60px; height: 60px; margin: 0 auto 30px auto; }
+        .lock-body {
+            width: 40px; height: 30px; background: #444; position: absolute; bottom: 0; left: 50%; 
+            transform: translateX(-50%); border-radius: 4px; transition: background 0.5s ease;
+        }
+        .lock-shackle {
+            width: 24px; height: 30px; border: 4px solid #444; border-bottom: 0; border-radius: 15px 15px 0 0;
+            position: absolute; top: 2px; left: 50%; transform: translateX(-50%); 
+            transition: transform 0.5s ease, border-color 0.5s ease; transform-origin: 100% 100%;
+        }
+        
+        /* Unlocked State */
+        .unlocked .lock-shackle { transform: translateX(-50%) rotateY(180deg) translateX(15px); border-color: #00d4ff; }
+        .unlocked .lock-body { background: #00d4ff; box-shadow: 0 0 20px rgba(0, 212, 255, 0.6); }
+        .success-msg { text-align: center; color: #00d4ff; font-family: monospace; letter-spacing: 2px; margin-top: 20px; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # --- LOGIN CONTENT ---
+    
+    # 1. Title & Subtitle
+    st.markdown("## POTWELL INTELLIGENCE")
+    st.markdown("<p>Restricted Access Area</p>", unsafe_allow_html=True)
+
+    # 2. Lock Animation Container
+    lock_state = "unlocked" if st.session_state.login_success_anim else ""
+    st.markdown(f"""
+        <div class="lock-container {lock_state}">
+            <div class="lock-shackle"></div>
+            <div class="lock-body"></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # 3. Input & Interaction
+    if not st.session_state.login_success_anim:
+        # Create a placeholder to clear the form after success
+        form_placeholder = st.empty()
+        
+        with form_placeholder.container():
+            password = st.text_input("ENTER PASSKEY", type="password", key="login_pass", label_visibility="collapsed", placeholder="ENTER PASSKEY")
+            
+            if st.button("AUTHENTICATE"):
                 if password == CORRECT_PASSWORD:
-                    st.session_state.password_correct = True
-                    st.session_state.login_failed = False
+                    st.session_state.login_success_anim = True
                     st.rerun()
                 else:
-                    st.session_state.login_failed = True
-                    st.rerun()
+                    st.error("ACCESS DENIED")
+    else:
+        # 4. Success Message
+        st.markdown('<div class="success-msg">ACCESS GRANTED</div>', unsafe_allow_html=True)
+        time.sleep(2)
+        st.session_state.password_correct = True
+        st.rerun()
 
     return False
 
-# --- STOP EXECUTION IF NOT LOGGED IN ---
 if not check_password():
     st.stop()
 
-
 # =========================================================
-#   DASHBOARD CONTENT (STARTS HERE)
+#   DASHBOARD CONTENT (Only runs after login)
 # =========================================================
-
-# --- RESTORE SIDEBAR VISIBILITY ---
-st.markdown("""<style>[data-testid="stSidebar"] { display: block; }</style>""", unsafe_allow_html=True)
 
 # --- DATA LOADER ---
 @st.cache_data(ttl=60)
@@ -274,12 +189,12 @@ def load_data():
 df = load_data()
 
 if df.empty:
-    st.warning("⚠️ Yhteys muodostettu, mutta dataa ei löytynyt. Tarkista Google Sheet.")
+    st.warning("⚠️ Connection established, but data stream is empty. Check source.")
     st.stop()
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.markdown("### 🎛 HALLINTAPANEELI")
+    st.markdown("### 🎛 CONTROL PANEL")
     st.write("---")
     
     if not df['pvm'].isnull().all():
@@ -287,7 +202,7 @@ with st.sidebar:
         max_date = df['pvm'].max().date()
         
         start_date, end_date = st.date_input(
-            "Aikaväli",
+            "Time Horizon",
             [min_date, max_date],
             min_value=min_date,
             max_value=max_date
@@ -301,14 +216,14 @@ with st.sidebar:
     
     all_products = sorted(df['tuote'].unique())
     selected_products = st.multiselect(
-        "Suodata tuotteet", 
+        "Product Filter", 
         all_products, 
         default=[all_products[0]] if len(all_products) > 0 else []
     )
     
     all_stores = sorted(df['kauppa'].unique())
     selected_stores_graph = st.multiselect(
-        "Suodata kaupat",
+        "Store Filter",
         all_stores,
         default=all_stores 
     )
@@ -317,12 +232,12 @@ with st.sidebar:
 try:
     last_update = df['pvm'].max().strftime('%d.%m.%Y')
 except:
-    last_update = "Ei tiedossa"
+    last_update = "N/A"
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    st.title("MARKKINAKATSAUS")
-    st.caption(f"LIVE DATA | PÄIVITETTY: {last_update}")
+    st.title("MARKET INTELLIGENCE")
+    st.caption(f"LIVE DATA STREAM | UPDATED: {last_update}")
 
 # --- METRICS & CHART ---
 if not df_filtered_time.empty and selected_products and selected_stores_graph:
@@ -338,13 +253,13 @@ if not df_filtered_time.empty and selected_products and selected_stores_graph:
         max_price = graph_df['hinta'].max()
 
         kpi1, kpi2, kpi3 = st.columns(3)
-        with kpi1: st.metric("Keskihinta", f"{latest_avg:.2f} €")
-        with kpi2: st.metric("Alin havaittu", f"{min_price:.2f} €")
-        with kpi3: st.metric("Ylin havaittu", f"{max_price:.2f} €")
+        with kpi1: st.metric("Average Price", f"{latest_avg:.2f} €")
+        with kpi2: st.metric("Lowest Detected", f"{min_price:.2f} €")
+        with kpi3: st.metric("Highest Detected", f"{max_price:.2f} €")
         
         st.markdown("###")
 
-        # ALTAIR CHART
+        # ALTAIR CHART (Dark Mode Optimized)
         stats_df = graph_df.groupby(['pvm', 'tuote'])['hinta'].mean().reset_index()
 
         base = alt.Chart(stats_df).encode(
@@ -356,17 +271,17 @@ if not df_filtered_time.empty and selected_products and selected_stores_graph:
 
         chart = base.mark_line(strokeWidth=3).properties(
             height=400,
-            background='transparent'
+            background='transparent' # Allows global dark theme to show through
         ).configure_view(
             strokeWidth=0
         ).interactive()
 
         st.altair_chart(chart, use_container_width=True)
     else:
-        st.info("Ei dataa valituilla ehdoilla.")
+        st.info("No data for selected criteria.")
 
 # --- MATRIX TABLE ---
-st.subheader("HINTAMATRIISI")
+st.subheader("PRICE MATRIX")
 
 if not df.empty:
     sorted_dates = sorted(df['pvm'].unique(), reverse=True)
@@ -396,6 +311,7 @@ if not df.empty:
 
     merged_df['formatted_cell'] = merged_df.apply(format_price_cell, axis=1)
 
+    # Simplified Chain Logic for display
     def detect_chain(s):
         if "KM " in s: return "K-Market"
         if "SM " in s: return "K-Supermarket"
@@ -410,13 +326,14 @@ if not df.empty:
         aggfunc='first'
     )
 
+    # Styling for Dark Mode
     def style_matrix(val):
         if isinstance(val, str):
-            if "▲" in val: return "color: #ff4b4b; font-weight: bold;" # Red
-            if "▼" in val: return "color: #00e676; font-weight: bold;" # Green
+            if "▲" in val: return "color: #ff4b4b; font-weight: bold;" # Red for increase
+            if "▼" in val: return "color: #00d4ff; font-weight: bold;" # Cyan for decrease
         return "color: #ddd;"
 
     st.dataframe(matrix_df.style.map(style_matrix), use_container_width=True, height=600)
 
-if st.button('PÄIVITÄ TIEDOT'):
+if st.button('REFRESH DATA'):
     st.rerun()
