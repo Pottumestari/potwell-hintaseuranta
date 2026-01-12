@@ -168,9 +168,12 @@ def check_password():
         border: none !important;
         outline: none !important;
         background: transparent !important;
-        color: #e5e7eb !important;
+        color: #000000 !important;
         padding: 12px 12px !important;
     }
+    div[data-testid="stForm"] div[data-testid="stTextInput"] input::placeholder {
+    color: #6b7280 !important;  /* neutral gray */
+   }
     div[data-testid="stForm"] div[data-testid="stTextInput"]:focus-within > div {
         border-color: rgba(14, 165, 183, 0.9) !important;
         box-shadow: 0 0 12px rgba(14, 165, 183, 0.22) !important;
@@ -607,6 +610,7 @@ else:
 
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
+
 
 
 
