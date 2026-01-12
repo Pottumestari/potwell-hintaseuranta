@@ -189,6 +189,15 @@ def check_password():
         box-shadow: 0 10px 25px rgba(14, 165, 183, 0.25) !important;
         transform: translateY(-1px) scale(1.01);
     }
+    /* Center the submit button inside the form */
+    div[data-testid="stForm"] div.stButton {
+    display: flex;
+    justify-content: center;
+    }
+    /* Keep button not full-width */
+   div[data-testid="stForm"] div.stButton > button {
+    width: auto !important;
+    }
 
     /* LOCK */
     .lock-container { position: relative; width: 60px; height: 60px; margin: 0 auto 30px auto; }
@@ -585,6 +594,7 @@ else:
 
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
+
 
 
 
