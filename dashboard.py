@@ -176,28 +176,43 @@ def check_password():
         box-shadow: 0 0 12px rgba(14, 165, 183, 0.22) !important;
     }
 
-    /* Button perfectly centered under the input (same 420px parent, flex center) */
-    div[data-testid="stForm"] div.stButton {
-        display: flex !important;
-        justify-content: center !important;
-        margin-top: 14px !important;
-    }
-    div[data-testid="stForm"] div.stButton > button {
-        width: auto !important;            /* not full width */
-        min-width: 180px !important;
-        padding: 12px 22px !important;
-        border-radius: 12px !important;
-        border: none !important;
-        font-weight: 800 !important;
-        letter-spacing: 1px !important;
-        background: linear-gradient(135deg, #19b8d6 0%, #0ea5b7 60%, #0891b2 100%) !important;
-        color: #061018 !important;
-        transition: transform 0.15s ease, box-shadow 0.15s ease !important;
-    }
-    div[data-testid="stForm"] div.stButton > button:hover {
-        box-shadow: 0 10px 25px rgba(14, 165, 183, 0.25) !important;
-        transform: translateY(-1px) scale(1.01);
-    }
+/* Lock login form width to match input exactly */
+div[data-testid="stForm"]{
+    max-width: 420px !important;
+    margin: 0 auto !important;
+}
+
+/* Hide Streamlit's "Press Enter to submit form" hint */
+div[data-testid="stTextInput"] [data-testid="InputInstructions"] { display: none !important; }
+div[data-testid="stTextInput"] [data-testid="stInputInstructions"] { display: none !important; }
+/* fallback for different Streamlit versions */
+div[data-testid="stTextInput"] div[aria-live="polite"] { display: none !important; }
+
+/* Center the *form submit* button (Streamlit uses stFormSubmitButton wrapper) */
+div[data-testid="stFormSubmitButton"]{
+    display: flex !important;
+    justify-content: center !important;
+    margin-top: 14px !important;
+}
+
+/* Style submit button (not full width) */
+div[data-testid="stFormSubmitButton"] > button {
+    width: auto !important;
+    min-width: 180px !important;
+    padding: 12px 22px !important;
+    border-radius: 12px !important;
+    border: none !important;
+    font-weight: 800 !important;
+    letter-spacing: 1px !important;
+    background: linear-gradient(135deg, #19b8d6 0%, #0ea5b7 60%, #0891b2 100%) !important;
+    color: #061018 !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+div[data-testid="stFormSubmitButton"] > button:hover {
+    box-shadow: 0 10px 25px rgba(14, 165, 183, 0.25) !important;
+    transform: translateY(-1px) scale(1.01);
+}
+
 
     /* LOCK */
     .lock-container { position: relative; width: 60px; height: 60px; margin: 0 auto 30px auto; }
@@ -592,6 +607,7 @@ else:
 
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
+
 
 
 
