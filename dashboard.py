@@ -10,7 +10,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # --- CONFIGURATION ---
 st.set_page_config(
-    page_title="Potwell Intelligence",
+    page_title="Potwell Hintaseuranta",
     page_icon="🥔",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -115,7 +115,7 @@ def check_password():
     # --- LOGIN CONTENT ---
     
     # 1. Title & Subtitle
-    st.markdown("## POTWELL INTELLIGENCE")
+    st.markdown("## POTWELL HINTASEURANTA")
     st.markdown("<p>Restricted Access Area</p>", unsafe_allow_html=True)
 
     # 2. Lock Animation Container
@@ -133,17 +133,17 @@ def check_password():
         form_placeholder = st.empty()
         
         with form_placeholder.container():
-            password = st.text_input("ENTER PASSKEY", type="password", key="login_pass", label_visibility="collapsed", placeholder="ENTER PASSKEY")
+            password = st.text_input("SYÖTÄ SALASANA", type="password", key="login_pass", label_visibility="collapsed", placeholder="SYÖTÄ SALASANA")
             
-            if st.button("AUTHENTICATE"):
+            if st.button("KIRJAUDU"):
                 if password == CORRECT_PASSWORD:
                     st.session_state.login_success_anim = True
                     st.rerun()
                 else:
-                    st.error("ACCESS DENIED")
+                    st.error("VÄÄRÄ SALASANA")
     else:
         # 4. Success Message
-        st.markdown('<div class="success-msg">ACCESS GRANTED</div>', unsafe_allow_html=True)
+        st.markdown('<div class="success-msg">SALASANA OIKEIN</div>', unsafe_allow_html=True)
         time.sleep(2)
         st.session_state.password_correct = True
         st.rerun()
@@ -337,3 +337,4 @@ if not df.empty:
 
 if st.button('REFRESH DATA'):
     st.rerun()
+
