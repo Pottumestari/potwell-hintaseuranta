@@ -135,7 +135,7 @@ def check_password():
         with form_placeholder.container():
             password = st.text_input("SALASANA", type="password", key="login_pass", label_visibility="collapsed", placeholder="SALASANA")
             
-            if st.button("AUTHENTICATE"):
+            if st.button("KIRJAUDU"):
                 if password == CORRECT_PASSWORD:
                     st.session_state.login_success_anim = True
                     st.rerun()
@@ -460,3 +460,4 @@ else:
 
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
+
