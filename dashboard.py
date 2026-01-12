@@ -24,125 +24,142 @@ st.markdown("""
         color: #e0e0e0;
     }
 
-    /* 2. INPUT FIELD STYLING (Professional Dark) */
+    /* 2. INPUT FIELD STYLING */
+    /* Remove default borders and make it blend with the card */
     div[data-testid="stTextInput"] input {
         background-color: rgba(255, 255, 255, 0.07) !important;
         color: white !important;
         border: 1px solid rgba(255, 255, 255, 0.15) !important;
-        border-radius: 6px !important;
+        border-radius: 8px !important;
         padding: 12px !important;
-        text-align: center; /* Center text input */
+        text-align: center; 
     }
     div[data-testid="stTextInput"] input:focus {
-        border-color: #666 !important;
-        box-shadow: 0 0 10px rgba(255, 255, 255, 0.1) !important;
+        border-color: #00d4ff !important;
+        box-shadow: 0 0 15px rgba(0, 212, 255, 0.2) !important;
     }
     
-    /* 3. BUTTON STYLING (Centered & Dark Theme) */
+    /* 3. BUTTON STYLING (Centered) */
     div.stButton {
-        text-align: center; /* Centers the button container */
-        margin-top: 20px;
+        display: flex;
+        justify-content: center; /* This centers the button element */
     }
     div.stButton > button {
-        background-color: #1a1a1a !important; /* Dark Grey */
-        color: #ddd !important;
-        border: 1px solid #444 !important;
-        padding: 10px 40px !important;
-        border-radius: 6px !important;
-        font-weight: 500 !important;
-        letter-spacing: 1px !important;
-        transition: all 0.3s ease !important;
-        margin: 0 auto !important; /* Force center */
-        display: block !important;
+        background: linear-gradient(135deg, #2c3e50 0%, #4ca1af 100%) !important; /* Professional Steel/Blue Gradient */
+        color: white !important;
+        border: none !important;
+        padding: 12px 50px !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        letter-spacing: 1.5px !important;
+        transition: transform 0.2s, box-shadow 0.2s !important;
+        margin-top: 10px !important;
     }
     div.stButton > button:hover {
-        background-color: #333 !important;
-        border-color: #888 !important;
-        color: white !important;
-        transform: scale(1.02);
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(76, 161, 175, 0.4);
+    }
+    div.stButton > button:active {
+        transform: translateY(0px);
     }
 
-    /* 4. LOGIN CARD CONTAINER */
-    .login-wrapper {
-        max-width: 450px;
-        margin: 10vh auto;
-        padding: 50px;
-        background: rgba(255, 255, 255, 0.02);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
+    /* 4. LOGIN CARD CONTAINER (Visual Background) */
+    .login-card-bg {
+        padding: 40px;
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
         border: 1px solid rgba(255, 255, 255, 0.05);
         border-radius: 20px;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
         text-align: center;
+        margin-bottom: 20px;
     }
     
     /* 5. LOCK ANIMATIONS */
     @keyframes shake {
         0% { transform: translateX(0); }
-        20% { transform: translateX(-10px); }
-        40% { transform: translateX(10px); }
-        60% { transform: translateX(-10px); }
-        80% { transform: translateX(10px); }
+        25% { transform: translateX(-8px); }
+        50% { transform: translateX(8px); }
+        75% { transform: translateX(-8px); }
         100% { transform: translateX(0); }
+    }
+    
+    .lock-icon-wrapper {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 20px;
     }
     
     .lock-container {
         position: relative;
-        width: 60px;
-        height: 70px;
-        margin: 0 auto 20px auto;
+        width: 50px;
+        height: 60px;
         transition: all 0.3s ease;
     }
     
     .lock-body {
-        width: 44px;
-        height: 35px;
-        background: #555;
+        width: 40px;
+        height: 32px;
+        background: #00d4ff; /* Default Blue */
         position: absolute;
         bottom: 0;
         left: 50%;
         transform: translateX(-50%);
-        border-radius: 4px;
-        transition: background 0.3s;
+        border-radius: 6px;
+        transition: background-color 0.3s ease;
     }
     
     .lock-shackle {
-        width: 26px;
-        height: 30px;
-        border: 5px solid #555;
+        width: 24px;
+        height: 28px;
+        border: 4px solid #00d4ff; /* Default Blue */
         border-bottom: 0;
         border-radius: 15px 15px 0 0;
         position: absolute;
-        top: 0;
+        top: 2px;
         left: 50%;
         transform: translateX(-50%);
-        transition: border-color 0.3s;
+        transition: border-color 0.3s ease;
     }
 
-    /* ERROR STATE (RED & SHAKE) */
+    /* ERROR STATE */
     .shake-anim {
         animation: shake 0.4s ease-in-out;
     }
-    .error-lock .lock-body { background: #d32f2f !important; } /* Red Body */
-    .error-lock .lock-shackle { border-color: #d32f2f !important; } /* Red Shackle */
+    .error-lock .lock-body { background-color: #ff4b4b !important; }
+    .error-lock .lock-shackle { border-color: #ff4b4b !important; }
     
     .error-text {
-        color: #d32f2f;
+        color: #ff4b4b;
         font-family: 'Segoe UI', sans-serif;
-        font-size: 14px;
-        font-weight: bold;
+        font-size: 13px;
+        font-weight: 600;
         letter-spacing: 1px;
-        margin-bottom: 15px;
-        margin-top: -10px;
+        margin-top: 15px;
         animation: fadeIn 0.5s;
+        text-transform: uppercase;
     }
 
-    /* SUCCESS STATE (GREEN/CYAN) */
-    .success-lock .lock-body { background: #00e676 !important; }
-    .success-lock .lock-shackle { border-color: #00e676 !important; }
+    /* TYPOGRAPHY */
+    h2.login-title { 
+        font-weight: 300; 
+        letter-spacing: 3px; 
+        font-size: 24px; 
+        color: white;
+        margin: 0;
+        padding-bottom: 5px;
+    }
+    p.login-subtitle { 
+        color: #666; 
+        font-size: 11px; 
+        text-transform: uppercase; 
+        letter-spacing: 2px;
+        margin-bottom: 30px;
+    }
     
-    h2 { font-weight: 300; letter-spacing: 2px; font-size: 24px; margin-bottom: 5px; color: #fff; }
-    p.subtitle { color: #666; font-size: 12px; margin-bottom: 30px; text-transform: uppercase; letter-spacing: 1px; }
+    /* HIDE SIDEBAR ON LOGIN */
+    [data-testid="stSidebar"] { display: none; }
 
     </style>
 """, unsafe_allow_html=True)
@@ -151,59 +168,65 @@ st.markdown("""
 def check_password():
     CORRECT_PASSWORD = "Potwell25!"
 
-    # Initialize Session State
     if "password_correct" not in st.session_state:
         st.session_state.password_correct = False
     if "login_failed" not in st.session_state:
         st.session_state.login_failed = False
 
-    # If already logged in, skip everything
     if st.session_state.password_correct:
         return True
 
-    # --- HIDE SIDEBAR DURING LOGIN ---
-    st.markdown("""<style>[data-testid="stSidebar"] { display: none; }</style>""", unsafe_allow_html=True)
-
     # --- RENDER LOGIN UI ---
     
-    # 1. Container Start
-    st.markdown('<div class="login-wrapper">', unsafe_allow_html=True)
-    st.markdown("<h2>POTWELL HINTASEURANTA</h2>", unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">Restricted Access Area</p>', unsafe_allow_html=True)
+    # Creates 3 columns: Left spacer, Center Card (narrow), Right spacer
+    col1, col2, col3 = st.columns([1, 2, 1]) 
+    
+    # We put everything inside the middle column to "box" it in
+    with col2:
+        # Start Card Container
+        st.markdown('<div class="login-card-bg">', unsafe_allow_html=True)
+        
+        st.markdown('<h2 class="login-title">POTWELL INTELLIGENCE</h2>', unsafe_allow_html=True)
+        st.markdown('<p class="login-subtitle">Restricted Access Area</p>', unsafe_allow_html=True)
 
-    # 2. Logic for Lock Visuals (Normal vs Error)
-    lock_class = ""
-    error_message_html = ""
-    
-    if st.session_state.login_failed:
-        lock_class = "error-lock shake-anim"
-        error_message_html = '<div class="error-text">VÄÄRÄ SALASANA</div>'
+        # Logic for Error State
+        lock_class = ""
+        error_msg = ""
+        
+        if st.session_state.login_failed:
+            lock_class = "error-lock shake-anim"
+            error_msg = '<div class="error-text">VÄÄRÄ SALASANA</div>'
 
-    # 3. Lock Icon HTML
-    st.markdown(f"""
-        <div class="lock-container {lock_class}">
-            <div class="lock-shackle"></div>
-            <div class="lock-body"></div>
-        </div>
-        {error_message_html}
-    """, unsafe_allow_html=True)
-    
-    # 4. Input Form (Using standard Streamlit widgets styled via CSS)
-    # Note: We use a placeholder to clear the form upon success
-    
-    password = st.text_input("SALASANA", type="password", label_visibility="collapsed", placeholder="Syötä salasana")
-    
-    if st.button("KIRJAUDU"):
-        if password == CORRECT_PASSWORD:
-            st.session_state.password_correct = True
-            st.session_state.login_failed = False
-            st.rerun()
-        else:
-            st.session_state.login_failed = True
-            st.rerun()
+        # Lock Icon
+        st.markdown(f"""
+            <div class="lock-icon-wrapper">
+                <div class="lock-container {lock_class}">
+                    <div class="lock-shackle"></div>
+                    <div class="lock-body"></div>
+                </div>
+            </div>
+            {error_msg}
+        """, unsafe_allow_html=True)
+        
+        # End Card Container Background (Visual only)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # 5. Container End
-    st.markdown('</div>', unsafe_allow_html=True)
+        # WIDGETS (Inputs must be outside the HTML div to work in Streamlit, 
+        # but they are inside 'col2' so they stay narrow)
+        
+        # Use a form to allow "Enter" key submission
+        with st.form("login_form"):
+            password = st.text_input("SALASANA", type="password", label_visibility="collapsed", placeholder="Syötä salasana")
+            submit = st.form_submit_button("KIRJAUDU")
+            
+            if submit:
+                if password == CORRECT_PASSWORD:
+                    st.session_state.password_correct = True
+                    st.session_state.login_failed = False
+                    st.rerun()
+                else:
+                    st.session_state.login_failed = True
+                    st.rerun()
 
     return False
 
@@ -216,12 +239,14 @@ if not check_password():
 #   DASHBOARD CONTENT (STARTS HERE)
 # =========================================================
 
+# --- RESTORE SIDEBAR VISIBILITY ---
+st.markdown("""<style>[data-testid="stSidebar"] { display: block; }</style>""", unsafe_allow_html=True)
+
 # --- DATA LOADER ---
 @st.cache_data(ttl=60)
 def load_data():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        # Check local vs cloud
         if os.path.exists("service_account.json"):
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         else:
