@@ -124,130 +124,112 @@ def check_password():
         return True
 
     # --- LOGIN SCREEN CSS (Only active when logged out) ---
-    st.markdown("""
-        <style>
-        /* Hide Sidebar on Login */
-        [data-testid="stSidebar"] { display: none; }
+st.markdown("""
+<style>
+/* Hide Sidebar on Login */
+[data-testid="stSidebar"] { display: none; }
 
-        /* CENTER THE LOGIN CARD */
-        div.block-container {
-            max-width: 520px;
-            padding: 60px 44px;
-            margin: auto;
-            margin-top: 10vh;
+/* Target the real main block-container in newer Streamlit */
+div[data-testid="stAppViewContainer"] .main .block-container {
+    max-width: 520px !important;
+    padding: 60px 44px !important;
+    margin: 10vh auto 0 auto !important;
 
-            /* GLASS EFFECT */
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 24px;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-        }
+    background: rgba(255, 255, 255, 0.03) !important;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 24px !important;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5) !important;
+}
 
-        /* Typography Alignment */
-        h2 {
-            text-align: center;
-            font-weight: 600;
-            letter-spacing: 2px;
-            font-size: 28px;
-            margin-bottom: 0px;
-            color: #e5e7eb;
-        }
-        p {
-            text-align: center;
-            color: #9ca3af;
-            font-size: 12px;
-            margin-top: -10px;
-            margin-bottom: 40px;
-        }
+/* Typography */
+h2 { text-align: center; font-weight: 600; letter-spacing: 2px; font-size: 28px; margin-bottom: 0px; color: #e5e7eb; }
+p  { text-align: center; color: #9ca3af; font-size: 12px; margin-top: -10px; margin-bottom: 40px; }
 
-        /* Center input nicely inside the card */
-        div[data-testid="stTextInput"] {
-            max-width: 420px;
-            margin: 0 auto;
-        }
+/* ---- Password input: style the OUTER container, not only input ---- */
+div[data-testid="stTextInput"] { max-width: 420px; margin: 0 auto; }
+div[data-testid="stTextInput"] > div {
+    border: 1px solid rgba(255,255,255,0.14) !important;
+    border-radius: 12px !important;
+    background: rgba(255,255,255,0.06) !important;
+    padding: 2px !important;
+}
 
-        /* Button centered (NOT full-width) */
-        div.stButton {
-            display: flex;
-            justify-content: center;
-            margin-top: 16px;
-        }
-        div.stButton > button {
-            width: auto !important;
-            min-width: 180px;
-            background: linear-gradient(135deg, #19b8d6 0%, #0ea5b7 60%, #0891b2 100%) !important;
-            color: #061018 !important;
-            border: none !important;
-            font-weight: 800 !important;
-            letter-spacing: 1px !important;
-            padding: 12px 20px !important;
-            border-radius: 12px !important;
-            transition: transform 0.15s ease, box-shadow 0.15s ease !important;
-        }
-        div.stButton > button:hover {
-            box-shadow: 0 10px 25px rgba(14, 165, 183, 0.25) !important;
-            transform: translateY(-1px) scale(1.01);
-        }
-        div.stButton > button:active {
-            transform: translateY(0px) scale(0.99);
-            box-shadow: none !important;
-        }
+/* Remove inner borders so we don't get double outlines */
+div[data-testid="stTextInput"] input {
+    border: none !important;
+    outline: none !important;
+    background: transparent !important;
+    color: #e5e7eb !important;
+    padding: 12px 12px !important;
+}
+div[data-testid="stTextInput"] input:focus {
+    box-shadow: none !important;
+}
 
-        /* LOCK */
-        .lock-container { position: relative; width: 60px; height: 60px; margin: 0 auto 30px auto; }
-        .lock-body {
-            width: 40px; height: 30px; background: #444; position: absolute; bottom: 0; left: 50%;
-            transform: translateX(-50%); border-radius: 6px; transition: background 0.35s ease, box-shadow 0.35s ease;
-        }
-        .lock-shackle {
-            width: 24px; height: 30px; border: 4px solid #444; border-bottom: 0; border-radius: 15px 15px 0 0;
-            position: absolute; top: 2px; left: 50%; transform: translateX(-50%);
-            transition: transform 0.45s ease, border-color 0.35s ease; transform-origin: 100% 100%;
-        }
+/* Focus ring on the container (single clean border) */
+div[data-testid="stTextInput"]:focus-within > div {
+    border-color: rgba(14, 165, 183, 0.9) !important;
+    box-shadow: 0 0 12px rgba(14, 165, 183, 0.22) !important;
+}
 
-        /* Success (GREEN) */
-        .success .lock-shackle {
-            transform: translateX(-50%) rotateY(180deg) translateX(15px);
-            border-color: #22c55e;
-        }
-        .success .lock-body {
-            background: #22c55e;
-            box-shadow: 0 0 22px rgba(34, 197, 94, 0.55);
-        }
+/* Button styling (NOT full width) */
+div.stButton > button {
+    width: auto !important;
+    min-width: 180px !important;
+    padding: 12px 22px !important;
+    border-radius: 12px !important;
+    border: none !important;
+    font-weight: 800 !important;
+    letter-spacing: 1px !important;
+    background: linear-gradient(135deg, #19b8d6 0%, #0ea5b7 60%, #0891b2 100%) !important;
+    color: #061018 !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+div.stButton > button:hover {
+    box-shadow: 0 10px 25px rgba(14, 165, 183, 0.25) !important;
+    transform: translateY(-1px) scale(1.01);
+}
 
-        /* Error (RED) */
-        .error .lock-shackle { border-color: #ef4444; }
-        .error .lock-body {
-            background: #ef4444;
-            box-shadow: 0 0 22px rgba(239, 68, 68, 0.45);
-        }
+/* LOCK */
+.lock-container { position: relative; width: 60px; height: 60px; margin: 0 auto 30px auto; }
+.lock-body {
+    width: 40px; height: 30px; background: #444; position: absolute; bottom: 0; left: 50%;
+    transform: translateX(-50%); border-radius: 6px; transition: background 0.35s ease, box-shadow 0.35s ease;
+}
+.lock-shackle {
+    width: 24px; height: 30px; border: 4px solid #444; border-bottom: 0; border-radius: 15px 15px 0 0;
+    position: absolute; top: 2px; left: 50%; transform: translateX(-50%);
+    transition: transform 0.45s ease, border-color 0.35s ease; transform-origin: 100% 100%;
+}
 
-        /* Shake animation */
-        @keyframes shake {
-            0%   { transform: translateX(-50%) translateX(0); }
-            15%  { transform: translateX(-50%) translateX(-6px); }
-            30%  { transform: translateX(-50%) translateX(6px); }
-            45%  { transform: translateX(-50%) translateX(-5px); }
-            60%  { transform: translateX(-50%) translateX(5px); }
-            75%  { transform: translateX(-50%) translateX(-3px); }
-            100% { transform: translateX(-50%) translateX(0); }
-        }
-        .shake { animation: shake 0.5s ease-in-out 1; }
+/* Success (GREEN) */
+.success .lock-shackle { transform: translateX(-50%) rotateY(180deg) translateX(15px); border-color: #22c55e; }
+.success .lock-body { background: #22c55e; box-shadow: 0 0 22px rgba(34, 197, 94, 0.55); }
 
-        /* Status messages */
-        .status-msg {
-            text-align: center;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            letter-spacing: 2px;
-            margin-top: 18px;
-            font-size: 13px;
-        }
-        .status-success { color: #22c55e; }
-        .status-error { color: #ef4444; }
-        </style>
-    """, unsafe_allow_html=True)
+/* Error (RED) */
+.error .lock-shackle { border-color: #ef4444; }
+.error .lock-body { background: #ef4444; box-shadow: 0 0 22px rgba(239, 68, 68, 0.45); }
+
+/* Shake animation */
+@keyframes shake {
+  0%{transform:translateX(-50%) translateX(0)}
+  15%{transform:translateX(-50%) translateX(-6px)}
+  30%{transform:translateX(-50%) translateX(6px)}
+  45%{transform:translateX(-50%) translateX(-5px)}
+  60%{transform:translateX(-50%) translateX(5px)}
+  75%{transform:translateX(-50%) translateX(-3px)}
+  100%{transform:translateX(-50%) translateX(0)}
+}
+.shake { animation: shake 0.5s ease-in-out 1; }
+
+/* Status messages */
+.status-msg { text-align: center; font-family: monospace; letter-spacing: 2px; margin-top: 18px; font-size: 13px; }
+.status-success { color: #22c55e; }
+.status-error { color: #ef4444; }
+</style>
+""", unsafe_allow_html=True)
 
     # --- LOGIN CONTENT ---
     st.markdown("## POTWELL HINTASEURANTA")
@@ -280,22 +262,17 @@ def check_password():
                 placeholder="SYÖTÄ SALASANA"
             )
 
-            if st.button("KIRJAUDU"):
-                if password == CORRECT_PASSWORD:
-                    st.session_state.login_error_anim = False
-                    st.session_state.login_success_anim = True
-                    st.rerun()
-                else:
-                    st.session_state.login_success_anim = False
-                    st.session_state.login_error_anim = True
-                    st.rerun()
-
-            # Error message + reset so shake can re-trigger next time
-            if st.session_state.login_error_anim:
-                st.markdown('<div class="status-msg status-error">VÄÄRÄ SALASANA</div>', unsafe_allow_html=True)
-                time.sleep(0.6)
-                st.session_state.login_error_anim = False
-                st.rerun()
+            c1, c2, c3 = st.columns([1, 1, 1])
+with c2:
+    if st.button("KIRJAUDU"):
+        if password == CORRECT_PASSWORD:
+            st.session_state.login_error_anim = False
+            st.session_state.login_success_anim = True
+            st.rerun()
+        else:
+            st.session_state.login_success_anim = False
+            st.session_state.login_error_anim = True
+            st.rerun()
 
     else:
         st.markdown('<div class="status-msg status-success">SALASANA OIKEIN</div>', unsafe_allow_html=True)
@@ -602,3 +579,4 @@ else:
 
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
+
