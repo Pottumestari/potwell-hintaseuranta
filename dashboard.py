@@ -32,13 +32,13 @@ def apply_login_css():
         div[data-testid="stTextInput"] input {
             background-color: rgba(255, 255, 255, 0.05) !important;
             color: #e0e0e0 !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            border-radius: 8px !important;
-            padding: 10px !important;
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+            border-radius: 10px !important;
+            padding: 10px 12px !important;
         }
         div[data-testid="stTextInput"] input:focus {
-            border-color: #00d4ff !important;
-            box-shadow: 0 0 10px rgba(0, 212, 255, 0.2) !important;
+            border-color: rgba(14, 165, 183, 0.9) !important;
+            box-shadow: 0 0 10px rgba(14, 165, 183, 0.25) !important;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -117,6 +117,8 @@ def check_password():
         st.session_state.password_correct = False
     if "login_success_anim" not in st.session_state:
         st.session_state.login_success_anim = False
+    if "login_error_anim" not in st.session_state:
+        st.session_state.login_error_anim = False
 
     if st.session_state.password_correct:
         return True
@@ -129,8 +131,8 @@ def check_password():
 
         /* CENTER THE LOGIN CARD */
         div.block-container {
-            max-width: 500px;
-            padding: 60px 40px;
+            max-width: 520px;
+            padding: 60px 44px;
             margin: auto;
             margin-top: 10vh;
 
@@ -144,41 +146,106 @@ def check_password():
         }
 
         /* Typography Alignment */
-        h2 { text-align: center; font-weight: 300; letter-spacing: 2px; font-size: 28px; margin-bottom: 0px; color: #e0e0e0; }
-        p { text-align: center; color: #9ca3af; font-size: 12px; margin-top: -10px; margin-bottom: 40px; }
+        h2 {
+            text-align: center;
+            font-weight: 600;
+            letter-spacing: 2px;
+            font-size: 28px;
+            margin-bottom: 0px;
+            color: #e5e7eb;
+        }
+        p {
+            text-align: center;
+            color: #9ca3af;
+            font-size: 12px;
+            margin-top: -10px;
+            margin-bottom: 40px;
+        }
 
-        /* Button Styling */
+        /* Center input nicely inside the card */
+        div[data-testid="stTextInput"] {
+            max-width: 420px;
+            margin: 0 auto;
+        }
+
+        /* Button centered (NOT full-width) */
+        div.stButton {
+            display: flex;
+            justify-content: center;
+            margin-top: 16px;
+        }
         div.stButton > button {
-            width: 100%;
-            background-color: #00d4ff !important;
-            color: #000 !important;
-            border: none;
-            font-weight: bold;
-            letter-spacing: 1px;
-            padding: 12px;
-            transition: all 0.3s ease;
+            width: auto !important;
+            min-width: 180px;
+            background: linear-gradient(135deg, #19b8d6 0%, #0ea5b7 60%, #0891b2 100%) !important;
+            color: #061018 !important;
+            border: none !important;
+            font-weight: 800 !important;
+            letter-spacing: 1px !important;
+            padding: 12px 20px !important;
+            border-radius: 12px !important;
+            transition: transform 0.15s ease, box-shadow 0.15s ease !important;
         }
         div.stButton > button:hover {
-            box-shadow: 0 0 15px #00d4ff;
-            transform: scale(1.02);
+            box-shadow: 0 10px 25px rgba(14, 165, 183, 0.25) !important;
+            transform: translateY(-1px) scale(1.01);
+        }
+        div.stButton > button:active {
+            transform: translateY(0px) scale(0.99);
+            box-shadow: none !important;
         }
 
-        /* LOCK ANIMATION STYLES */
+        /* LOCK */
         .lock-container { position: relative; width: 60px; height: 60px; margin: 0 auto 30px auto; }
         .lock-body {
             width: 40px; height: 30px; background: #444; position: absolute; bottom: 0; left: 50%;
-            transform: translateX(-50%); border-radius: 4px; transition: background 0.5s ease;
+            transform: translateX(-50%); border-radius: 6px; transition: background 0.35s ease, box-shadow 0.35s ease;
         }
         .lock-shackle {
             width: 24px; height: 30px; border: 4px solid #444; border-bottom: 0; border-radius: 15px 15px 0 0;
             position: absolute; top: 2px; left: 50%; transform: translateX(-50%);
-            transition: transform 0.5s ease, border-color 0.5s ease; transform-origin: 100% 100%;
+            transition: transform 0.45s ease, border-color 0.35s ease; transform-origin: 100% 100%;
         }
 
-        /* Unlocked State */
-        .unlocked .lock-shackle { transform: translateX(-50%) rotateY(180deg) translateX(15px); border-color: #00d4ff; }
-        .unlocked .lock-body { background: #00d4ff; box-shadow: 0 0 20px rgba(0, 212, 255, 0.6); }
-        .success-msg { text-align: center; color: #00d4ff; font-family: monospace; letter-spacing: 2px; margin-top: 20px; }
+        /* Success (GREEN) */
+        .success .lock-shackle {
+            transform: translateX(-50%) rotateY(180deg) translateX(15px);
+            border-color: #22c55e;
+        }
+        .success .lock-body {
+            background: #22c55e;
+            box-shadow: 0 0 22px rgba(34, 197, 94, 0.55);
+        }
+
+        /* Error (RED) */
+        .error .lock-shackle { border-color: #ef4444; }
+        .error .lock-body {
+            background: #ef4444;
+            box-shadow: 0 0 22px rgba(239, 68, 68, 0.45);
+        }
+
+        /* Shake animation */
+        @keyframes shake {
+            0%   { transform: translateX(-50%) translateX(0); }
+            15%  { transform: translateX(-50%) translateX(-6px); }
+            30%  { transform: translateX(-50%) translateX(6px); }
+            45%  { transform: translateX(-50%) translateX(-5px); }
+            60%  { transform: translateX(-50%) translateX(5px); }
+            75%  { transform: translateX(-50%) translateX(-3px); }
+            100% { transform: translateX(-50%) translateX(0); }
+        }
+        .shake { animation: shake 0.5s ease-in-out 1; }
+
+        /* Status messages */
+        .status-msg {
+            text-align: center;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            letter-spacing: 2px;
+            margin-top: 18px;
+            font-size: 13px;
+        }
+        .status-success { color: #22c55e; }
+        .status-error { color: #ef4444; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -186,9 +253,17 @@ def check_password():
     st.markdown("## POTWELL HINTASEURANTA")
     st.markdown("<p>Restricted Access Area</p>", unsafe_allow_html=True)
 
-    lock_state = "unlocked" if st.session_state.login_success_anim else ""
+    # Lock classes based on state
+    lock_classes = []
+    if st.session_state.login_success_anim:
+        lock_classes.append("success")
+    if st.session_state.login_error_anim:
+        lock_classes.append("error")
+        lock_classes.append("shake")
+    lock_class_str = " ".join(lock_classes)
+
     st.markdown(f"""
-        <div class="lock-container {lock_state}">
+        <div class="lock-container {lock_class_str}">
             <div class="lock-shackle"></div>
             <div class="lock-body"></div>
         </div>
@@ -207,13 +282,24 @@ def check_password():
 
             if st.button("KIRJAUDU"):
                 if password == CORRECT_PASSWORD:
+                    st.session_state.login_error_anim = False
                     st.session_state.login_success_anim = True
                     st.rerun()
                 else:
-                    st.error("VÄÄRÄ SALASANA")
+                    st.session_state.login_success_anim = False
+                    st.session_state.login_error_anim = True
+                    st.rerun()
+
+            # Error message + reset so shake can re-trigger next time
+            if st.session_state.login_error_anim:
+                st.markdown('<div class="status-msg status-error">VÄÄRÄ SALASANA</div>', unsafe_allow_html=True)
+                time.sleep(0.6)
+                st.session_state.login_error_anim = False
+                st.rerun()
+
     else:
-        st.markdown('<div class="success-msg">SALASANA OIKEIN</div>', unsafe_allow_html=True)
-        time.sleep(2)
+        st.markdown('<div class="status-msg status-success">SALASANA OIKEIN</div>', unsafe_allow_html=True)
+        time.sleep(1.2)
         st.session_state.password_correct = True
         st.rerun()
 
