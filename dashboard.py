@@ -262,26 +262,28 @@ def check_password():
     if not st.session_state.login_success_anim:
         form_placeholder = st.empty()
         with form_placeholder.container():
-            password = st.text_input(
-                "SYÖTÄ SALASANA",
-                type="password",
-                key="login_pass",
-                label_visibility="collapsed",
-                placeholder="SYÖTÄ SALASANA"
-            )
 
-            # Center the button using columns (no full width)
-            c1, c2, c3 = st.columns([1, 1, 1])
-            with c2:
-                if st.button("KIRJAUDU"):
-                    if password == CORRECT_PASSWORD:
-                        st.session_state.login_error_anim = False
-                        st.session_state.login_success_anim = True
-                        st.rerun()
-                    else:
-                        st.session_state.login_success_anim = False
-                        st.session_state.login_error_anim = True
-                        st.rerun()
+            with st.form("login_form", clear_on_submit=False):
+                password = st.text_input(
+                    "SYÖTÄ SALASANA",
+                    type="password",
+                    key="login_pass",
+                    label_visibility="collapsed",
+                    placeholder="SYÖTÄ SALASANA"
+                )
+
+                submitted = st.form_submit_button("KIRJAUDU")
+
+            # Handle submit (button click OR Enter)
+            if submitted:
+                if password == CORRECT_PASSWORD:
+                    st.session_state.login_error_anim = False
+                    st.session_state.login_success_anim = True
+                    st.rerun()
+                else:
+                    st.session_state.login_success_anim = False
+                    st.session_state.login_error_anim = True
+                    st.rerun()
 
             # Wrong password message + reset so shake can re-trigger next time
             if st.session_state.login_error_anim:
@@ -290,11 +292,6 @@ def check_password():
                 st.session_state.login_error_anim = False
                 st.rerun()
 
-    else:
-        st.markdown('<div class="status-msg status-success">SALASANA OIKEIN</div>', unsafe_allow_html=True)
-        time.sleep(1.2)
-        st.session_state.password_correct = True
-        st.rerun()
 
     return False
 
@@ -595,6 +592,7 @@ else:
 
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
+
 
 
 
