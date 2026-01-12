@@ -27,7 +27,7 @@ st.markdown("""
     /* INPUT FIELDS STYLING */
     div[data-testid="stTextInput"] input {
         background-color: rgba(255, 255, 255, 0.05) !important;
-        color: white !important;
+        color: black !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-radius: 8px !important;
         padding: 10px !important;
@@ -460,4 +460,5 @@ else:
 
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
+
 
