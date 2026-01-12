@@ -21,7 +21,8 @@ st.markdown("""
     <style>
     .stApp {
         background: radial-gradient(circle at 50% 10%, rgb(25, 25, 30) 0%, rgb(5, 5, 5) 100%);
-        color: #e0e0e0;
+        color: #245C07;
+        ---e0e0e0---
     }
     
     /* INPUT FIELDS STYLING */
@@ -460,5 +461,6 @@ else:
 
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
+
 
 
