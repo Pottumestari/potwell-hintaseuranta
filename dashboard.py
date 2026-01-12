@@ -109,10 +109,11 @@ def apply_dashboard_css():
 #   AUTHENTICATION LOGIC
 # =========================================================
 def check_password():
-    apply_login_css()  # Login-teema käyttöön aina kun ollaan tässä vaiheessa
+    apply_login_css()
 
     CORRECT_PASSWORD = "Potwell25!"
 
+    # Init session state
     if "password_correct" not in st.session_state:
         st.session_state.password_correct = False
     if "login_success_anim" not in st.session_state:
@@ -120,10 +121,10 @@ def check_password():
     if "login_error_anim" not in st.session_state:
         st.session_state.login_error_anim = False
 
+    # If already logged in, allow dashboard to render
     if st.session_state.password_correct:
         return True
 
-    # --- LOGIN SCREEN CSS (Only active when logged out) ---
     # --- LOGIN SCREEN CSS (Only active when logged out) ---
     st.markdown("""
     <style>
@@ -135,7 +136,6 @@ def check_password():
         max-width: 520px !important;
         padding: 60px 44px !important;
         margin: 10vh auto 0 auto !important;
-
         background: rgba(255, 255, 255, 0.03) !important;
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
@@ -148,7 +148,7 @@ def check_password():
     h2 { text-align: center; font-weight: 600; letter-spacing: 2px; font-size: 28px; margin-bottom: 0px; color: #e5e7eb; }
     p  { text-align: center; color: #9ca3af; font-size: 12px; margin-top: -10px; margin-bottom: 40px; }
 
-    /* Make the whole login form exactly same width as input (this guarantees perfect centering) */
+    /* Form width = input width */
     div[data-testid="stForm"]{
         max-width: 420px !important;
         margin: 0 auto !important;
@@ -172,50 +172,40 @@ def check_password():
         padding: 12px 12px !important;
     }
     div[data-testid="stForm"] div[data-testid="stTextInput"] input::placeholder {
-    color: #6b7280 !important;  /* neutral gray */
-   }
+        color: #6b7280 !important;
+    }
     div[data-testid="stForm"] div[data-testid="stTextInput"]:focus-within > div {
         border-color: rgba(14, 165, 183, 0.9) !important;
         box-shadow: 0 0 12px rgba(14, 165, 183, 0.22) !important;
     }
 
-/* Lock login form width to match input exactly */
-div[data-testid="stForm"]{
-    max-width: 420px !important;
-    margin: 0 auto !important;
-}
+    /* Hide Streamlit's form hint ("Press Enter to submit form") */
+    div[data-testid="stTextInput"] [data-testid="InputInstructions"] { display: none !important; }
+    div[data-testid="stTextInput"] [data-testid="stInputInstructions"] { display: none !important; }
+    div[data-testid="stTextInput"] div[aria-live="polite"] { display: none !important; }
 
-/* Hide Streamlit's "Press Enter to submit form" hint */
-div[data-testid="stTextInput"] [data-testid="InputInstructions"] { display: none !important; }
-div[data-testid="stTextInput"] [data-testid="stInputInstructions"] { display: none !important; }
-/* fallback for different Streamlit versions */
-div[data-testid="stTextInput"] div[aria-live="polite"] { display: none !important; }
-
-/* Center the *form submit* button (Streamlit uses stFormSubmitButton wrapper) */
-div[data-testid="stFormSubmitButton"]{
-    display: flex !important;
-    justify-content: center !important;
-    margin-top: 14px !important;
-}
-
-/* Style submit button (not full width) */
-div[data-testid="stFormSubmitButton"] > button {
-    width: auto !important;
-    min-width: 180px !important;
-    padding: 12px 22px !important;
-    border-radius: 12px !important;
-    border: none !important;
-    font-weight: 800 !important;
-    letter-spacing: 1px !important;
-    background: linear-gradient(135deg, #19b8d6 0%, #0ea5b7 60%, #0891b2 100%) !important;
-    color: #061018 !important;
-    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
-}
-div[data-testid="stFormSubmitButton"] > button:hover {
-    box-shadow: 0 10px 25px rgba(14, 165, 183, 0.25) !important;
-    transform: translateY(-1px) scale(1.01);
-}
-
+    /* Center the form submit button EXACTLY under input */
+    div[data-testid="stFormSubmitButton"]{
+        display: flex !important;
+        justify-content: center !important;
+        margin-top: 14px !important;
+    }
+    div[data-testid="stFormSubmitButton"] > button {
+        width: auto !important;
+        min-width: 180px !important;
+        padding: 12px 22px !important;
+        border-radius: 12px !important;
+        border: none !important;
+        font-weight: 800 !important;
+        letter-spacing: 1px !important;
+        background: linear-gradient(135deg, #19b8d6 0%, #0ea5b7 60%, #0891b2 100%) !important;
+        color: #061018 !important;
+        transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+    }
+    div[data-testid="stFormSubmitButton"] > button:hover {
+        box-shadow: 0 10px 25px rgba(14, 165, 183, 0.25) !important;
+        transform: translateY(-1px) scale(1.01);
+    }
 
     /* LOCK */
     .lock-container { position: relative; width: 60px; height: 60px; margin: 0 auto 30px auto; }
@@ -256,7 +246,6 @@ div[data-testid="stFormSubmitButton"] > button:hover {
     </style>
     """, unsafe_allow_html=True)
 
-
     # --- LOGIN CONTENT ---
     st.markdown("## POTWELL HINTASEURANTA")
     st.markdown("<p>Restricted Access Area</p>", unsafe_allow_html=True)
@@ -277,39 +266,41 @@ div[data-testid="stFormSubmitButton"] > button:hover {
         </div>
     """, unsafe_allow_html=True)
 
-    if not st.session_state.login_success_anim:
-        form_placeholder = st.empty()
-        with form_placeholder.container():
+    # If success animation is active, show it briefly then enter dashboard
+    if st.session_state.login_success_anim:
+        st.markdown('<div class="status-msg status-success">SALASANA OIKEIN</div>', unsafe_allow_html=True)
+        time.sleep(0.8)
+        st.session_state.password_correct = True   # <-- THIS WAS MISSING
+        st.session_state.login_success_anim = False
+        st.rerun()
 
-            with st.form("login_form", clear_on_submit=False):
-                password = st.text_input(
-                    "SYÖTÄ SALASANA",
-                    type="password",
-                    key="login_pass",
-                    label_visibility="collapsed",
-                    placeholder="SYÖTÄ SALASANA"
-                )
+    # Normal login form
+    with st.form("login_form", clear_on_submit=False):
+        password = st.text_input(
+            "SYÖTÄ SALASANA",
+            type="password",
+            key="login_pass",
+            label_visibility="collapsed",
+            placeholder="SYÖTÄ SALASANA"
+        )
+        submitted = st.form_submit_button("KIRJAUDU")
 
-                submitted = st.form_submit_button("KIRJAUDU")
+    if submitted:
+        if password == CORRECT_PASSWORD:
+            st.session_state.login_error_anim = False
+            st.session_state.login_success_anim = True
+            st.rerun()
+        else:
+            st.session_state.login_success_anim = False
+            st.session_state.login_error_anim = True
+            st.rerun()
 
-            # Handle submit (button click OR Enter)
-            if submitted:
-                if password == CORRECT_PASSWORD:
-                    st.session_state.login_error_anim = False
-                    st.session_state.login_success_anim = True
-                    st.rerun()
-                else:
-                    st.session_state.login_success_anim = False
-                    st.session_state.login_error_anim = True
-                    st.rerun()
-
-            # Wrong password message + reset so shake can re-trigger next time
-            if st.session_state.login_error_anim:
-                st.markdown('<div class="status-msg status-error">VÄÄRÄ SALASANA</div>', unsafe_allow_html=True)
-                time.sleep(0.6)
-                st.session_state.login_error_anim = False
-                st.rerun()
-
+    # Wrong password message + reset so shake can re-trigger next time
+    if st.session_state.login_error_anim:
+        st.markdown('<div class="status-msg status-error">VÄÄRÄ SALASANA</div>', unsafe_allow_html=True)
+        time.sleep(0.6)
+        st.session_state.login_error_anim = False
+        st.rerun()
 
     return False
 
@@ -610,6 +601,7 @@ else:
 
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
+
 
 
 
