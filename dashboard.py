@@ -152,34 +152,60 @@ with st.sidebar:
     if sel_group != "Kaikki": df_sb = df_sb[df_sb['Ryhmä'] == sel_group]
     if sel_chain != "Kaikki": df_sb = df_sb[df_sb['Ketju'] == sel_chain]
 
-    selected_products = st.multiselect("Tuotteet graafiin", sorted(df_sb['tuote'].unique()), default=[])
-    selected_stores_graph = st.multiselect("Kaupat graafiin", sorted(df_sb['kauppa'].unique()), default=[])
+    all_p = sorted(df_sb['tuote'].unique())
+    selected_products = st.multiselect("Tuotteet graafiin", all_p, default=[all_p[0]] if all_p else [])
+    
+    all_s = sorted(df_sb['kauppa'].unique())
+    selected_stores_graph = st.multiselect("Kaupat graafiin", all_s, default=all_s)
 
-# --- GRAPH SECTION ---
+# --- MAIN DASHBOARD ---
 st.title("Hintaseuranta")
 mask = (df['pvm'].dt.date >= start_date) & (df['pvm'].dt.date <= end_date)
 df_filtered = df[mask].copy()
-# (Graph logic omitted for space - keep your existing graph code here)
+
+# --- OSA 1: KPI & GRAAFI ---
+if not df_filtered.empty and selected_products and selected_stores_graph:
+    graph_df = df_filtered[(df_filtered['tuote'].isin(selected_products)) & (df_filtered['kauppa'].isin(selected_stores_graph))].copy()
+    if not graph_df.empty:
+        latest_avg = graph_df[graph_df['pvm'] == graph_df['pvm'].max()]['hinta'].mean()
+        dates = sorted(graph_df['pvm'].unique())
+        delta = latest_avg - graph_df[graph_df['pvm'] == dates[-2]]['hinta'].mean() if len(dates) > 1 else 0
+
+        k1, k2, k3 = st.columns(3)
+        k1.metric("Keskihinta", f"{latest_avg:.2f} €", f"{delta:.2f} €", delta_color="inverse")
+        k2.metric("Alin hinta", f"{graph_df['hinta'].min():.2f} €")
+        k3.metric("Ylin hinta", f"{graph_df['hinta'].max():.2f} €")
+
+        stats = graph_df.groupby(['pvm', 'tuote'])['hinta'].agg(Keskiarvo='mean', Minimi='min', Maksimi='max').reset_index()
+        melted = stats.melt(['pvm', 'tuote'], var_name='Mittari', value_name='Hinta')
+
+        chart = (alt.Chart(melted).encode(
+            x=alt.X('pvm:T', axis=alt.Axis(format='%d.%m.', title=None)),
+            y=alt.Y('Hinta:Q', title='Hinta (€)', scale=alt.Scale(zero=False)),
+            color='tuote:N',
+            strokeDash='Mittari'
+        ).mark_line(strokeWidth=3).encode(strokeDash='Mittari') + alt.Chart(melted).mark_circle(size=80).encode(x='pvm:T', y='Hinta:Q', color='tuote:N', shape='Mittari')).properties(height=400).interactive()
+        st.altair_chart(chart, use_container_width=True)
 
 st.write("---")
 
-# --- OSA 2: HINTAMATRIISI (FIXED) ---
+# --- OSA 2: HINTAMATRIISI (FULL FIX) ---
 st.subheader("📊 Hintamatriisi")
-matrix_group = st.radio("Valitse Ryhmä matriisiin:", ["K-Ryhmä", "S-Ryhmä"], horizontal=True)
+matrix_group = st.radio("Valitse Ryhmä matriisiin:", ["K-Ryhmä", "S-Ryhmä"], horizontal=True, key="matrix_radio")
 
-# 1. Filter the dataframe strictly to only include rows from the selected group
-m_df_filtered = df[df['Ryhmä'] == matrix_group].copy()
+# CRITICAL FIX: We filter the data BEFORE creating the latest/previous dataframes
+# This ensures that products from the other group are completely excluded.
+m_df_raw = df[df['Ryhmä'] == matrix_group].copy()
 
-if not m_df_filtered.empty:
-    m_dates = sorted(m_df_filtered['pvm'].unique(), reverse=True)
+if not m_df_raw.empty:
+    m_dates = sorted(m_df_raw['pvm'].unique(), reverse=True)
     m_latest_date = m_dates[0]
     
-    # 2. Get data for the latest date for this group
-    latest_m = m_df_filtered[m_df_filtered['pvm'] == m_latest_date].copy().rename(columns={'hinta': 'price_now'})
+    # Only products and stores from the selected group are pulled here
+    latest_m = m_df_raw[m_df_raw['pvm'] == m_latest_date].copy().rename(columns={'hinta': 'price_now'})
     
-    # 3. Add comparison if possible
     if len(m_dates) > 1:
-        prev_m = m_df_filtered[m_df_filtered['pvm'] == m_dates[1]][['kauppa', 'tuote', 'hinta']].rename(columns={'hinta': 'price_prev'})
+        prev_m = m_df_raw[m_df_raw['pvm'] == m_dates[1]][['kauppa', 'tuote', 'hinta']].rename(columns={'hinta': 'price_prev'})
         merged_m = pd.merge(latest_m, prev_m, on=['kauppa', 'tuote'], how='left')
     else:
         merged_m = latest_m; merged_m['price_prev'] = np.nan
@@ -192,12 +218,10 @@ if not m_df_filtered.empty:
 
     merged_m['cell'] = merged_m.apply(format_m, axis=1)
     
-    # 4. Pivot the table
-    # Because we are pivoting a dataframe (merged_m) that ONLY contains data for the selected group,
-    # products from the other group will only appear if they have a non-null 'cell' in this group.
+    # Pivot logic
     matrix = merged_m.pivot_table(index='tuote', columns=['Ketju', 'kauppa'], values='cell', aggfunc='first')
     
-    # 5. Final safety check: drop any remaining rows that are all-null for these stores
+    # Final cleanup: drop rows that have no data for the visible columns
     matrix = matrix.dropna(how='all')
 
     st.dataframe(
