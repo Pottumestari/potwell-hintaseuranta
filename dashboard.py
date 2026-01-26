@@ -131,29 +131,43 @@ def get_chain(store: str) -> str:
     if n in STORE_CHAIN_OVERRIDES:
         return STORE_CHAIN_OVERRIDES[n]
 
-    # 2) Fallback heuristic detection (only if keywords exist)
     s = n.upper()
 
-    # K-ryhmä
-    if "K-CITYMARKET" in s or "KCITYMARKET" in s or "CITYMARKET" in s:
+    # -------------------------------------------------
+    # K-RYHMÄ (support abbreviations used in your data)
+    # -------------------------------------------------
+    # Citymarket: may appear as "K-Citymarket ..." OR "(CM ...)"
+    if "K-CITYMARKET" in s or "KCITYMARKET" in s or "CITYMARKET" in s or re.search(r"(\bCM\b|\(CM\b)", s):
         return "Citymarket"
-    if "K-SUPERMARKET" in s or re.search(r"\bK[- ]?SUPERMARKET\b", s):
+
+    # K-Supermarket: can appear as "K-Supermarket" or abbreviation "KSM"
+    # IMPORTANT: do NOT treat plain "SM" as K-Supermarket (it conflicts with S-Market)
+    if "K-SUPERMARKET" in s or re.search(r"(\bKSM\b|\(KSM\b|\bK[- ]?SUPERMARKET\b)", s):
         return "K-Supermarket"
-    if "K-MARKET" in s or re.search(r"\bK[- ]?MARKET\b", s):
+
+    # K-Market: abbreviation "KM" is common in your store names, e.g. "(KM Erottaja)"
+    if "K-MARKET" in s or re.search(r"(\bKM\b|\(KM\b|\bK[- ]?MARKET\b)", s):
         return "K-Market"
 
-    # S-ryhmä
+    # -------------------------------------------------
+    # S-RYHMÄ
+    # -------------------------------------------------
     if "PRISMA" in s:
         return "Prisma"
-    if "S-MARKET" in s or "SMARKET" in s or re.search(r"\bS[- ]?MARKET\b", s):
+
+    # S-Market: can appear as "S-Market", "Smarket", or "(SM ...)" in some datasets
+    if "S-MARKET" in s or "SMARKET" in s or re.search(r"(\bS[- ]?MARKET\b|\bSM\b|\(SM\b)", s):
         return "S-Market"
+
     if "ALEPA" in s:
         return "Alepa"
+
     if re.search(r"\bSALE\b", s):
         return "Sale"
 
-    # Unknown stays unknown (prevents leakage into K/S)
+    # Unknown stays unknown
     return "Muu"
+
 
 def get_group(chain: str) -> str:
     if chain in K_CHAINS:
@@ -399,3 +413,4 @@ if not m_df_raw.empty:
 
 if st.button("🔄 Päivitä"):
     st.rerun()
+
