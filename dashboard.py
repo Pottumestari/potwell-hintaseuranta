@@ -448,6 +448,14 @@ def load_data():
 
         df["Ketju"] = df["kauppa"].apply(get_chain)
         df["Ryhmä"] = df["Ketju"].apply(get_group)
+        
+        # --- Normalize EAN column name (optional but recommended) ---
+        # Accept common variants: "EAN", "Ean", "ean"
+        ean_candidates = [c for c in df.columns if str(c).strip().lower() == "ean"]
+         if ean_candidates:
+            df = df.rename(columns={ean_candidates[0]: "ean"})
+        else:
+            df["ean"] = ""   # ensures matrix can always show the column
 
         return df
 
@@ -636,3 +644,4 @@ if not m_df_raw.empty:
 
 if st.button("🔄 Päivitä"):
     st.rerun()
+
