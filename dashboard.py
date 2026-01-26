@@ -34,13 +34,8 @@ def apply_login_css():
             border-radius: 10px !important;
             padding: 10px 12px !important;
         }
-        div[data-testid="stTextInput"] input:focus {
-            border-color: rgba(14, 165, 183, 0.9) !important;
-            box-shadow: 0 0 10px rgba(14, 165, 183, 0.25) !important;
-        }
         </style>
     """, unsafe_allow_html=True)
-
 
 def apply_dashboard_css():
     st.markdown("""
@@ -49,24 +44,12 @@ def apply_dashboard_css():
             background: radial-gradient(circle at 50% 10%, rgb(245, 246, 250) 0%, rgb(232, 235, 242) 100%);
             color: #111827;
         }
-        h1, h2, h3, h4, h5, h6, p, div, span, label {
-            color: #111827;
-        }
+        h1, h2, h3, h4, h5, h6, p, div, span, label { color: #111827; }
         section[data-testid="stSidebar"] {
             background: rgba(255, 255, 255, 0.75);
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
             border-right: 1px solid rgba(17, 24, 39, 0.08);
-        }
-        div[data-testid="stTextInput"] input,
-        div[data-testid="stNumberInput"] input,
-        div[data-testid="stDateInput"] input,
-        div[data-testid="stMultiSelect"] div[role="combobox"],
-        div[data-testid="stSelectbox"] div[role="combobox"] {
-            background-color: rgba(255, 255, 255, 0.95) !important;
-            color: #111827 !important;
-            border: 1px solid rgba(17, 24, 39, 0.15) !important;
-            border-radius: 8px !important;
         }
         div[data-testid="stDataFrame"] {
             background: rgba(255,255,255,0.85) !important;
@@ -84,7 +67,7 @@ def apply_dashboard_css():
     """, unsafe_allow_html=True)
 
 # =========================================================
-#   AUTHENTICATION LOGIC (Kept exactly as provided)
+#   AUTHENTICATION LOGIC
 # =========================================================
 def check_password():
     apply_login_css()
@@ -98,64 +81,15 @@ def check_password():
     if st.session_state.password_correct:
         return True
 
-    st.markdown("""
-    <style>
-    [data-testid="stSidebar"] { display: none; }
-    div[data-testid="stAppViewContainer"] .main .block-container {
-        max-width: 520px !important;
-        padding: 60px 44px !important;
-        margin: 10vh auto 0 auto !important;
-        background: rgba(255, 255, 255, 0.03) !important;
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        border-radius: 24px !important;
-        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5) !important;
-    }
-    h2 { text-align: center; font-weight: 600; letter-spacing: 2px; font-size: 28px; margin-bottom: 0px; color: #e5e7eb; }
-    p  { text-align: center; color: #9ca3af; font-size: 12px; margin-top: -10px; margin-bottom: 40px; }
-    div[data-testid="stForm"]{ max-width: 420px !important; margin: 0 auto !important; }
-    div[data-testid="stForm"] div[data-testid="stTextInput"] input { color: #000000 !important; }
-    div[data-testid="stFormSubmitButton"] > button {
-        background: linear-gradient(135deg, #19b8d6 0%, #0ea5b7 60%, #0891b2 100%) !important;
-    }
-    .lock-container { position: relative; width: 60px; height: 60px; margin: 0 auto 30px auto; }
-    .lock-body { width: 40px; height: 30px; background: #444; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); border-radius: 6px; }
-    .lock-shackle { width: 24px; height: 30px; border: 4px solid #444; border-bottom: 0; border-radius: 15px 15px 0 0; position: absolute; top: 2px; left: 50%; transform: translateX(-50%); }
-    .success .lock-shackle { transform: translateX(-50%) rotateY(180deg) translateX(15px); border-color: #22c55e; }
-    .success .lock-body { background: #22c55e; }
-    .error .lock-body { background: #ef4444; }
-    @keyframes shake { 0%{transform:translateX(-50%) translateX(0)} 15%{transform:translateX(-50%) translateX(-6px)} 100%{transform:translateX(-50%) translateX(0)} }
-    .shake { animation: shake 0.5s ease-in-out 1; }
-    </style>
-    """, unsafe_allow_html=True)
-
     st.markdown("## POTWELL HINTASEURANTA")
-    st.markdown("<p>Restricted Access Area</p>", unsafe_allow_html=True)
-    
-    lock_class_str = ("success" if st.session_state.login_success_anim else "") + (" error shake" if st.session_state.login_error_anim else "")
-    st.markdown(f'<div class="lock-container {lock_class_str}"><div class="lock-shackle"></div><div class="lock-body"></div></div>', unsafe_allow_html=True)
-
-    if st.session_state.login_success_anim:
-        time.sleep(0.8)
-        st.session_state.password_correct = True
-        st.session_state.login_success_anim = False
-        st.rerun()
-
     with st.form("login_form"):
-        password = st.text_input("SYÖTÄ SALASANA", type="password", label_visibility="collapsed", placeholder="SYÖTÄ SALASANA")
+        password = st.text_input("SYÖTÄ SALASANA", type="password", placeholder="SYÖTÄ SALASANA")
         if st.form_submit_button("KIRJAUDU"):
             if password == CORRECT_PASSWORD:
-                st.session_state.login_success_anim = True
+                st.session_state.password_correct = True
                 st.rerun()
             else:
-                st.session_state.login_error_anim = True
-                st.rerun()
-    
-    if st.session_state.login_error_anim:
-        time.sleep(0.6)
-        st.session_state.login_error_anim = False
-        st.rerun()
+                st.error("Väärä salasana")
     return False
 
 if not check_password():
@@ -184,87 +118,80 @@ def load_data():
             df['hinta'] = pd.to_numeric(df['hinta'], errors='coerce')
             df.loc[df['hinta'] > 40, 'hinta'] = df['hinta'] / 100
             
-            # Helper for Grouping
-            def get_group(store):
-                s = store.upper()
-                return "K-Ryhmä" if any(x in s for x in ["KM ", "SM ", "CM ", "CITYMARKET", "K-MARKET", "K-SUPERMARKET"]) else "S-Ryhmä"
-            
+            # Grouping and Chain Logic
             def get_chain(store):
-                s = store.upper()
-                if "CM " in s or "CITYMARKET" in s: return "Citymarket"
-                if "SM " in s or "K-SUPERMARKET" in s: return "K-Supermarket"
-                if "KM " in s or "K-MARKET" in s: return "K-Market"
+                s = str(store).upper()
+                if any(x in s for x in ["CM ", "CITYMARKET"]): return "Citymarket"
+                if any(x in s for x in ["SM ", "K-SUPERMARKET"]): return "K-Supermarket"
+                if any(x in s for x in ["KM ", "K-MARKET"]): return "K-Market"
                 if "PRISMA" in s: return "Prisma"
                 if "S-MARKET" in s: return "S-Market"
                 if "SALE" in s: return "Sale"
-                return "Muu"
+                return "Citymarket" # "Muu" is now Citymarket
 
-            df['Ryhmä'] = df['kauppa'].apply(get_group)
+            def get_group(store, chain):
+                if chain in ["Citymarket", "K-Supermarket", "K-Market"]:
+                    return "K-Ryhmä"
+                return "S-Ryhmä"
+
             df['Ketju'] = df['kauppa'].apply(get_chain)
+            df['Ryhmä'] = df.apply(lambda x: get_group(x['kauppa'], x['Ketju']), axis=1)
+            
         return df
     except Exception:
         return pd.DataFrame()
 
 df = load_data()
 if df.empty:
-    st.warning("Ei dataa. Tarkista yhteys.")
+    st.warning("Ei dataa.")
     st.stop()
 
-# --- SIVUPALKKI ---
+# --- SIDEBAR ---
 with st.sidebar:
     if os.path.exists("potwell_logo_rgb_mv.jpg"):
         st.image("potwell_logo_rgb_mv.jpg")
-    else:
-        st.header("🥔 Valinnat")
     st.write("---")
 
     # 1. Aikaväli
+    st.subheader("📅 Aikaväli")
     min_date = df['pvm'].min().date()
     max_date = df['pvm'].max().date()
-    st.subheader("📅 Aikaväli")
-    start_date, end_date = st.date_input("Valitse tarkastelujakso", [min_date, max_date], min_value=min_date, max_value=max_date)
-    mask = (df['pvm'].dt.date >= start_date) & (df['pvm'].dt.date <= end_date)
-    df_filtered_time = df[mask].copy()
+    start_date, end_date = st.date_input("Valitse jakso", [min_date, max_date])
     st.write("---")
 
-    # 2. RYHMÄ & KETJU SLICERS (New requirement)
+    # 2. RYHMÄ & KETJU SLICERS
     st.subheader("🏢 Kaupparyhmä")
     sel_group = st.selectbox("Valitse Ryhmä", ["Kaikki", "K-Ryhmä", "S-Ryhmä"])
     
-    # Filter chains based on group
-    if sel_group != "Kaikki":
-        chains_avail = sorted(df[df['Ryhmä'] == sel_group]['Ketju'].unique())
-    else:
-        chains_avail = sorted(df['Ketju'].unique())
+    chains_avail = sorted(df[df['Ryhmä'] == sel_group]['Ketju'].unique()) if sel_group != "Kaikki" else sorted(df['Ketju'].unique())
     sel_chain = st.selectbox("Valitse Ketju", ["Kaikki"] + chains_avail)
 
-    # Filter data for next selections
-    df_sidebar_filter = df_filtered_time.copy()
+    # Filtering data for next multiselects
+    df_sidebar_filter = df.copy()
     if sel_group != "Kaikki":
         df_sidebar_filter = df_sidebar_filter[df_sidebar_filter['Ryhmä'] == sel_group]
     if sel_chain != "Kaikki":
         df_sidebar_filter = df_sidebar_filter[df_sidebar_filter['Ketju'] == sel_chain]
 
-    # 3. Tuotteet (Affecting graphs)
+    # 3. Tuotteet & Kaupat (For Graphs)
     st.subheader("📦 Tuotteet")
     all_products = sorted(df_sidebar_filter['tuote'].unique())
-    selected_products = st.multiselect("Valitse analysoitavat tuotteet", all_products, default=[all_products[0]] if all_products else [])
+    selected_products = st.multiselect("Valitse tuotteet", all_products, default=[all_products[0]] if all_products else [])
 
-    # 4. Kaupat (Affecting graphs)
     st.subheader("🏪 Kaupat (Graafi)")
     all_stores = sorted(df_sidebar_filter['kauppa'].unique())
     selected_stores_graph = st.multiselect("Valitse kaupat graafiin", all_stores, default=all_stores)
     st.caption(f"Versio 2.0 (Cloud) | Data: {max_date.strftime('%d.%m.%Y')}")
 
-# --- PÄÄNÄKYMÄ ---
+# --- MAIN VIEW ---
 update_str = df['pvm'].max().strftime('%d.%m.%Y')
-col1, col2 = st.columns([3, 1])
-with col1:
-    st.title("Hintaseuranta")
-    st.markdown(f"🗓️ *Data päivitetty viimeksi: {update_str}*")
-    st.markdown(f"**Markkinakatsaus ajalle:** {start_date.strftime('%d.%m.')} - {end_date.strftime('%d.%m.%Y')}")
+st.title("Hintaseuranta")
+st.markdown(f"🗓️ *Data päivitetty viimeksi: {update_str}*")
 
-# --- OSA 1: KPI & GRAAFI (ORIGINAL LOGIC) ---
+# --- OSA 1: KPI & GRAAFI (ORIGINAL) ---
+mask = (df['pvm'].dt.date >= start_date) & (df['pvm'].dt.date <= end_date)
+df_filtered_time = df[mask].copy()
+
 if not df_filtered_time.empty and selected_products and selected_stores_graph:
     graph_df = df_filtered_time[(df_filtered_time['tuote'].isin(selected_products)) & (df_filtered_time['kauppa'].isin(selected_stores_graph))].copy()
     if not graph_df.empty:
@@ -288,37 +215,60 @@ if not df_filtered_time.empty and selected_products and selected_stores_graph:
         ).mark_line(strokeWidth=3).encode(strokeDash='Mittari') + alt.Chart(melted_df).mark_circle(size=80).encode(x='pvm:T', y='Hinta:Q', color='tuote:N', shape='Mittari')).properties(height=400, title="Hintakehitys").interactive()
         
         st.altair_chart(chart, use_container_width=True)
-        with st.expander("📋 Tarkastele graafin dataa taulukkona"):
-            st.dataframe(stats_df, use_container_width=True)
 else:
-    st.info("Valitse tuotteet ja kaupat sivupalkista.")
+    st.info("Valitse tuotteet ja kaupat sivupalkista nähdäksesi graafin.")
 
 st.write("---")
 
-# --- OSA 2: HINTAMATRIISI (With Slicer) ---
+# --- OSA 2: HINTAMATRIISI (With Refined Filtering) ---
 st.subheader("📊 Hintamatriisi")
-matrix_sel = st.radio("Valitse Ryhmä matriisiin:", ["K-Ryhmä", "S-Ryhmä"], horizontal=True)
+matrix_group_sel = st.radio("Valitse Ryhmä matriisiin:", ["K-Ryhmä", "S-Ryhmä"], horizontal=True)
 
-m_df = df[df['Ryhmä'] == matrix_sel].copy()
+# Filter matrix data for the chosen Group
+m_df = df[df['Ryhmä'] == matrix_group_sel].copy()
+
 if not m_df.empty:
-    sorted_dates = sorted(m_df['pvm'].unique(), reverse=True)
-    latest_df = m_df[m_df['pvm'] == sorted_dates[0]].rename(columns={'hinta': 'price_now'})
-    if len(sorted_dates) > 1:
-        prev_df = m_df[m_df['pvm'] == sorted_dates[1]][['kauppa', 'tuote', 'hinta']].rename(columns={'hinta': 'price_prev'})
-        merged_df = pd.merge(latest_df, prev_df, on=['kauppa', 'tuote'], how='left')
-    else:
-        merged_df = latest_df; merged_df['price_prev'] = np.nan
+    m_sorted_dates = sorted(m_df['pvm'].unique(), reverse=True)
+    m_latest_date = m_sorted_dates[0]
+    m_prev_date = m_sorted_dates[1] if len(m_sorted_dates) > 1 else None
 
-    def format_cell(row):
+    latest_m = m_df[m_df['pvm'] == m_latest_date].copy().rename(columns={'hinta': 'price_now'})
+    
+    if m_prev_date:
+        prev_m = m_df[m_df['pvm'] == m_prev_date][['kauppa', 'tuote', 'hinta']].rename(columns={'hinta': 'price_prev'})
+        merged_m = pd.merge(latest_m, prev_m, on=['kauppa', 'tuote'], how='left')
+    else:
+        merged_m = latest_m
+        merged_m['price_prev'] = np.nan
+
+    def format_m_cell(row):
         p, prev = row['price_now'], row['price_prev']
         if pd.isna(p): return None
-        arr = " ▲" if p > prev else " ▼" if p < prev else " ➖" if pd.notna(prev) else ""
-        return f"{p:.2f} €{arr}"
+        price_str = f"{p:.2f} €"
+        if pd.notna(prev):
+            if p > prev: return f"{price_str} ▲"
+            if p < prev: return f"{price_str} ▼"
+            return f"{price_str} ➖"
+        return price_str
 
-    merged_df['formatted_cell'] = merged_df.apply(format_cell, axis=1)
-    matrix = merged_df.pivot_table(index='tuote', columns=['Ketju', 'kauppa'], values='formatted_cell', aggfunc='first')
-    
-    st.dataframe(matrix.style.map(lambda v: "color: #16a34a; font-weight: 700;" if "▲" in str(v) else "color: #dc2626; font-weight: 700;" if "▼" in str(v) else ""), use_container_width=True, height=800)
+    merged_m['formatted_cell'] = merged_m.apply(format_m_cell, axis=1)
+
+    # Pivot the matrix
+    matrix_table = merged_m.pivot_table(
+        index='tuote', 
+        columns=['Ketju', 'kauppa'], 
+        values='formatted_cell', 
+        aggfunc='first'
+    )
+
+    # REMOVE ROWS WITH NO DATA (e.g., Pirkka when S-Ryhmä is selected)
+    matrix_table = matrix_table.dropna(how='all')
+
+    st.dataframe(
+        matrix_table.style.map(lambda v: "color: #16a34a; font-weight: 700;" if "▲" in str(v) else "color: #dc2626; font-weight: 700;" if "▼" in str(v) else ""),
+        use_container_width=True, 
+        height=800
+    )
 
 if st.button('🔄 Päivitä tiedot'):
     st.rerun()
