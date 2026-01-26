@@ -88,19 +88,58 @@ if not check_password():
 apply_dashboard_css()
 
 # =========================================================
-#   STORE / CHAIN / GROUP MAPPING (STRICT: NO DEFAULT TO K)
+#   STORE / CHAIN / GROUP MAPPING (ROBUST)
 # =========================================================
-def get_chain(store: str) -> str:
-    s = str(store).upper().strip()
+
+def normalize_store_name(x: str) -> str:
+    """
+    Normalizes store names to make exact matching reliable:
+    - trims
+    - collapses multiple spaces
+    - removes extra spaces just inside parentheses
+    """
+    s = str(x).strip()
     s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"\(\s*", "(", s)   # "( Iso Omena" -> "(Iso Omena"
+    s = re.sub(r"\s*\)", ")", s)   # "Omena )" -> "Omena)"
+    return s
+
+# Explicit overrides: store name -> chain
+# These are your K-Citymarkets that do NOT contain "Citymarket" in the "kauppa" column.
+STORE_CHAIN_OVERRIDES = {
+    "Espoo (Iso Omena)": "Citymarket",
+    "Jyväskylä (Seppälä)": "Citymarket",
+    "Kuopio (Päiväranta)": "Citymarket",
+    "Pirkkala": "Citymarket",
+    "Rovaniemi": "Citymarket",
+    "Seinäjoki (Päivölä)": "Citymarket",
+    "Turku (Kupittaa)": "Citymarket",
+    "Vaasa (Kivihaka)": "Citymarket",
+}
+
+K_CHAINS = {"Citymarket", "K-Supermarket", "K-Market"}
+S_CHAINS = {"Prisma", "S-Market", "Sale", "Alepa"}
+
+ALLOWED_CHAINS = {
+    "K-Ryhmä": sorted(list(K_CHAINS)),
+    "S-Ryhmä": sorted(list(S_CHAINS)),
+}
+
+def get_chain(store: str) -> str:
+    # 1) Normalize and try exact override first
+    n = normalize_store_name(store)
+    if n in STORE_CHAIN_OVERRIDES:
+        return STORE_CHAIN_OVERRIDES[n]
+
+    # 2) Fallback heuristic detection (only if keywords exist)
+    s = n.upper()
 
     # K-ryhmä
-    if "K-CITYMARKET" in s or "KCITYMARKET" in s or "CITYMARKET" in s or re.search(r"\bCM\b", s):
+    if "K-CITYMARKET" in s or "KCITYMARKET" in s or "CITYMARKET" in s:
         return "Citymarket"
-    if "K-SUPERMARKET" in s or re.search(r"\bK[- ]?SUPERMARKET\b", s) or re.search(r"\bSM\b", s) and "S-MARKET" not in s:
-        # Note: the last condition avoids catching S-Market as SM (rare, but safer)
+    if "K-SUPERMARKET" in s or re.search(r"\bK[- ]?SUPERMARKET\b", s):
         return "K-Supermarket"
-    if "K-MARKET" in s or re.search(r"\bK[- ]?MARKET\b", s) or re.search(r"\bKM\b", s):
+    if "K-MARKET" in s or re.search(r"\bK[- ]?MARKET\b", s):
         return "K-Market"
 
     # S-ryhmä
@@ -113,20 +152,15 @@ def get_chain(store: str) -> str:
     if re.search(r"\bSALE\b", s):
         return "Sale"
 
-    # IMPORTANT: unknown stays unknown (prevents leaking into K)
+    # Unknown stays unknown (prevents leakage into K/S)
     return "Muu"
 
 def get_group(chain: str) -> str:
-    if chain in ["Citymarket", "K-Supermarket", "K-Market"]:
+    if chain in K_CHAINS:
         return "K-Ryhmä"
-    if chain in ["Prisma", "S-Market", "Sale", "Alepa"]:
+    if chain in S_CHAINS:
         return "S-Ryhmä"
     return "Muu"
-
-ALLOWED_CHAINS = {
-    "K-Ryhmä": ["Citymarket", "K-Supermarket", "K-Market"],
-    "S-Ryhmä": ["Prisma", "S-Market", "Sale", "Alepa"]
-}
 
 # =========================================================
 #   DATA LOADER
@@ -152,31 +186,30 @@ def load_data():
         if df.empty:
             return df
 
-        # --- REQUIRED COLUMNS CHECK ---
+        # Required columns check
         required_cols = {"pvm", "hinta", "kauppa", "tuote"}
         missing = required_cols - set(df.columns)
         if missing:
             raise ValueError(f"Missing required columns in sheet: {missing}")
 
-        # --- TYPE CLEANUP ---
+        # Normalize store names BEFORE mapping
+        df["kauppa"] = df["kauppa"].apply(normalize_store_name)
+
+        # Type cleanup
         df["pvm"] = pd.to_datetime(df["pvm"], errors="coerce")
         df = df.dropna(subset=["pvm"])
 
         df["hinta"] = df["hinta"].astype(str).str.replace(",", ".", regex=False)
         df["hinta"] = pd.to_numeric(df["hinta"], errors="coerce")
-
-        # If prices are given in cents sometimes
         df.loc[df["hinta"] > 40, "hinta"] = df["hinta"] / 100.0
 
-        # --- CHAIN/GROUP ---
+        # Chain/group mapping
         df["Ketju"] = df["kauppa"].apply(get_chain)
         df["Ryhmä"] = df["Ketju"].apply(get_group)
 
-        # OPTIONAL: keep unknown data for other parts, but matrix will filter it out strictly
         return df
 
     except Exception:
-        # Show the root cause in the UI (critical for cloud deployments)
         st.error("Data load failed. See details below.")
         st.code(traceback.format_exc())
         return pd.DataFrame()
@@ -193,7 +226,7 @@ with st.sidebar:
         st.image("potwell_logo_rgb_mv.jpg")
     st.write("---")
 
-    # Robust date range input (can return a single date)
+    # Robust date range input (can return single date)
     min_date = df["pvm"].min().date()
     max_date = df["pvm"].max().date()
     date_value = st.date_input("Jakso", value=(min_date, max_date))
@@ -205,9 +238,9 @@ with st.sidebar:
     st.subheader("🏢 Kaupparyhmä")
     sel_group = st.selectbox("Valitse Ryhmä", ["Kaikki", "K-Ryhmä", "S-Ryhmä"])
 
-    # Build chain list based on group
+    # Chains available (exclude Muu for clean UX)
     if sel_group == "Kaikki":
-        chains_avail = sorted(df["Ketju"].unique())
+        chains_avail = sorted([c for c in df["Ketju"].unique() if c != "Muu"])
     else:
         chains_avail = sorted(df[df["Ketju"].isin(ALLOWED_CHAINS[sel_group])]["Ketju"].unique())
 
@@ -225,6 +258,12 @@ with st.sidebar:
 
     all_s = sorted(df_sb["kauppa"].dropna().unique())
     selected_stores_graph = st.multiselect("Kaupat graafiin", all_s, default=all_s)
+
+    # OPTIONAL DEBUG (comment out when done)
+    # st.write("DEBUG: Ketju counts")
+    # st.dataframe(df["Ketju"].value_counts())
+    # st.write("DEBUG: Muu stores (top 30)")
+    # st.dataframe(df.loc[df["Ketju"]=="Muu","kauppa"].value_counts().head(30))
 
 # =========================================================
 #   MAIN DASHBOARD
@@ -291,7 +330,7 @@ if not df_filtered.empty and selected_products and selected_stores_graph:
 st.write("---")
 
 # =========================================================
-#   OSA 2: HINTAMATRIISI (STRICT GROUP FILTER FIX)
+#   OSA 2: HINTAMATRIISI (STRICT GROUP FILTER)
 # =========================================================
 st.subheader("📊 Hintamatriisi")
 
@@ -302,7 +341,7 @@ matrix_group = st.radio(
     key="matrix_radio",
 )
 
-# STRICT: filter by allowed chains (prevents S rows/cols leaking into K and vice versa)
+# STRICT: filter by allowed chains (prevents cross-group leakage)
 m_df_raw = df[df["Ketju"].isin(ALLOWED_CHAINS[matrix_group])].copy()
 
 if not m_df_raw.empty:
@@ -338,7 +377,6 @@ if not m_df_raw.empty:
 
     merged_m["cell"] = merged_m.apply(format_m, axis=1)
 
-    # Build pivot (only visible group stores included by m_df_raw filter)
     matrix = merged_m.pivot_table(
         index="tuote",
         columns=["Ketju", "kauppa"],
@@ -346,10 +384,7 @@ if not m_df_raw.empty:
         aggfunc="first",
     )
 
-    # Drop rows with no visible data
     matrix = matrix.dropna(how="all")
-
-    # Optional: drop columns that are entirely empty (rare, but keeps UI clean)
     matrix = matrix.dropna(axis=1, how="all")
 
     st.dataframe(
