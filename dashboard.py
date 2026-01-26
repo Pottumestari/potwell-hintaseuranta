@@ -56,16 +56,6 @@ def apply_dashboard_css():
             -webkit-backdrop-filter: blur(8px);
             border-right: 1px solid rgba(17, 24, 39, 0.08);
         }
-        div[data-testid="stTextInput"] input,
-        div[data-testid="stNumberInput"] input,
-        div[data-testid="stDateInput"] input,
-        div[data-testid="stMultiSelect"] div[role="combobox"],
-        div[data-testid="stSelectbox"] div[role="combobox"] {
-            background-color: rgba(255, 255, 255, 0.95) !important;
-            color: #111827 !important;
-            border: 1px solid rgba(17, 24, 39, 0.15) !important;
-            border-radius: 8px !important;
-        }
         div[data-testid="stDataFrame"], div[data-testid="stAltairChart"] {
             background: rgba(255,255,255,0.85) !important;
             border-radius: 12px;
@@ -171,13 +161,12 @@ with st.sidebar:
     start_date, end_date = st.date_input("Jakso", [min_date, max_date], min_value=min_date, max_value=max_date)
     st.write("---")
 
-    # Group and Chain Slicers
     st.subheader("🏢 Kaupparyhmä")
     sel_group = st.selectbox("Valitse Ryhmä", ["Kaikki", "K-Ryhmä", "S-Ryhmä"])
+    
     chains_avail = sorted(df[df['Ryhmä'] == sel_group]['Ketju'].unique()) if sel_group != "Kaikki" else sorted(df['Ketju'].unique())
     sel_chain = st.selectbox("Valitse Ketju", ["Kaikki"] + chains_avail)
 
-    # Filter Sidebar options
     df_sb = df.copy()
     if sel_group != "Kaikki": df_sb = df_sb[df_sb['Ryhmä'] == sel_group]
     if sel_chain != "Kaikki": df_sb = df_sb[df_sb['Ketju'] == sel_chain]
@@ -228,7 +217,7 @@ st.write("---")
 st.subheader("📊 Hintamatriisi")
 matrix_group = st.radio("Valitse Ryhmä matriisiin:", ["K-Ryhmä", "S-Ryhmä"], horizontal=True)
 
-# 1. Filter by Ryhmä (Automatically excludes stores from other group)
+# 1. Filter by Ryhmä
 m_df = df[df['Ryhmä'] == matrix_group].copy()
 
 if not m_df.empty:
@@ -248,6 +237,8 @@ if not m_df.empty:
         return f"{p:.2f} €{arr}"
 
     merged_m['cell'] = merged_m.apply(format_m, axis=1)
+    
+    # Strictly Filter the pivot table to only include products found in the selected Ryhmä
     matrix = merged_m.pivot_table(index='tuote', columns=['Ketju', 'kauppa'], values='cell', aggfunc='first').dropna(how='all')
 
     st.dataframe(matrix.style.map(lambda v: "color: #16a34a; font-weight: 700;" if "▲" in str(v) else "color: #dc2626; font-weight: 700;" if "▼" in str(v) else ""), use_container_width=True, height=800)
