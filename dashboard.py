@@ -123,28 +123,36 @@ ALLOWED_CHAINS = {
 
 def get_chain(store: str) -> str:
     n = normalize_store_name(store)
+
+    # 1) Exact overrides first (your plain-name Citymarkets)
     if n in STORE_CHAIN_OVERRIDES:
         return STORE_CHAIN_OVERRIDES[n]
 
     u = n.upper()
 
-    # IMPORTANT: check the explicit abbreviations your dataset uses
-    # K-Market: "(KM Erottaja)" etc.
-    if re.search(r"\(\s*KM\b", u) or re.search(r"\bK[- ]?MARKET\b", u):
+    # 2) Your dataset abbreviations INSIDE parentheses:
+    # KM = K-Market
+    if re.search(r"\(\s*KM\b", u):
         return "K-Market"
 
-    # K-Supermarket: support "(KSM ...)" or "(KS ...)" if they exist in your dataset later
-    if re.search(r"\(\s*KSM\b", u) or re.search(r"\(\s*KS\b", u) or re.search(r"\bK[- ]?SUPERMARKET\b", u):
+    # SM = K-Supermarket  (IMPORTANT: this is your rule)
+    if re.search(r"\(\s*SM\b", u):
         return "K-Supermarket"
 
-    # Citymarket if it ever appears as text or "(CM ...)"
-    if re.search(r"\(\s*CM\b", u) or "CITYMARKET" in u:
+    # 3) If chain is explicitly written in the name:
+    # Citymarket (rare in your data, but keep it)
+    if "CITYMARKET" in u or re.search(r"\(\s*CM\b", u):
         return "Citymarket"
 
-    # S-Market: "(SM ...)" or "S-Market"
-    if re.search(r"\(\s*SM\b", u) or "S-MARKET" in u or "SMARKET" in u:
-        return "S-Market"
+    # K-Supermarket explicitly spelled
+    if "K-SUPERMARKET" in u or re.search(r"\bK[- ]?SUPERMARKET\b", u):
+        return "K-Supermarket"
 
+    # K-Market explicitly spelled
+    if "K-MARKET" in u or re.search(r"\bK[- ]?MARKET\b", u):
+        return "K-Market"
+
+    # 4) S-ryhmä: ONLY when explicitly spelled out (to avoid SM confusion)
     if "PRISMA" in u:
         return "Prisma"
     if "ALEPA" in u:
@@ -152,7 +160,12 @@ def get_chain(store: str) -> str:
     if re.search(r"\bSALE\b", u):
         return "Sale"
 
+    # S-Market only if the name actually contains S-MARKET text
+    if "S-MARKET" in u or "SMARKET" in u or re.search(r"\bS[- ]?MARKET\b", u):
+        return "S-Market"
+
     return "Muu"
+
 
 def get_group(chain: str) -> str:
     if chain in K_CHAINS:
@@ -397,3 +410,4 @@ if not m_df_raw.empty:
 
 if st.button("🔄 Päivitä"):
     st.rerun()
+
