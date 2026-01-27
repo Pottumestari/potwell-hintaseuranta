@@ -374,7 +374,7 @@ def get_chain(store: str) -> str:
         return "Alepa"
     if re.search(r"\bSALE\b", u):
         return "Sale"
-    if "S-MARKET" in u or "SMARKET" in u or re.search(r"\bS[- ]?MARKET\b", u):
+    if "Arabia" in u or "Leinola" in u or re.search(r"\bS[- ]?MARKET\b", u):
         return "S-Market"
 
     return "Muu"
@@ -649,3 +649,4 @@ if not m_df_raw.empty:
 
 if st.button("🔄 Päivitä"):
     st.rerun()
+
