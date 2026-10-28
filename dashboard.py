@@ -113,7 +113,7 @@ def apply_dashboard_css():
 def check_password():
     apply_login_css()
 
-    CORRECT_PASSWORD = "Potwell25!"
+    CORRECT_PASSWORD = "Potwell25!"  
 
     # Init session state
     if "password_correct" not in st.session_state:
@@ -504,6 +504,10 @@ with st.sidebar:
     all_s = sorted(df_sb["kauppa"].dropna().unique())
     selected_stores_graph = st.multiselect("Kaupat graafiin", all_s, default=all_s)
 
+    # Which statistic lines to draw in the top graph (default: all)
+    metric_options = ["Keskiarvo", "Minimi", "Maksimi"]
+    selected_metrics = st.multiselect("Mittarit graafiin", metric_options, default=metric_options)
+
 # =========================================================
 #   MAIN DASHBOARD
 # =========================================================
@@ -545,26 +549,32 @@ if not df_filtered.empty and selected_products and selected_stores_graph:
         )
         melted = stats.melt(["pvm", "tuote"], var_name="Mittari", value_name="Hinta")
 
-        chart = (
-            alt.Chart(melted)
-            .mark_line(strokeWidth=3)
-            .encode(
-                x=alt.X("pvm:T", axis=alt.Axis(format="%d.%m.", title=None)),
-                y=alt.Y("Hinta:Q", title="Hinta (€)", scale=alt.Scale(zero=False)),
-                color="tuote:N",
-                strokeDash="Mittari:N",
-            )
-            + alt.Chart(melted)
-            .mark_circle(size=80)
-            .encode(
-                x="pvm:T",
-                y="Hinta:Q",
-                color="tuote:N",
-                shape="Mittari:N",
-            )
-        ).properties(height=400).interactive()
+        # Keep only the statistic lines the user selected in the sidebar
+        melted = melted[melted["Mittari"].isin(selected_metrics)]
 
-        st.altair_chart(chart, use_container_width=True)
+        if melted.empty:
+            st.info("Valitse vähintään yksi mittari (Keskiarvo, Minimi tai Maksimi) sivupalkista.")
+        else:
+            chart = (
+                alt.Chart(melted)
+                .mark_line(strokeWidth=3)
+                .encode(
+                    x=alt.X("pvm:T", axis=alt.Axis(format="%d.%m.", title=None)),
+                    y=alt.Y("Hinta:Q", title="Hinta (€)", scale=alt.Scale(zero=False)),
+                    color="tuote:N",
+                    strokeDash="Mittari:N",
+                )
+                + alt.Chart(melted)
+                .mark_circle(size=80)
+                .encode(
+                    x="pvm:T",
+                    y="Hinta:Q",
+                    color="tuote:N",
+                    shape="Mittari:N",
+                )
+            ).properties(height=400).interactive()
+
+            st.altair_chart(chart, use_container_width=True)
 
 st.write("---")
 
@@ -649,5 +659,3 @@ if not m_df_raw.empty:
 
 if st.button("🔄 Päivitä"):
     st.rerun()
-
-
